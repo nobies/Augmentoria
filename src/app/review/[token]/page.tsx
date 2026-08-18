@@ -16,6 +16,7 @@ import {
   getStudioBranding,
   getAllProjects,
   getCutsForProject,
+  getLocalVideoBlobUrl,
   getNotesForCut,
   saveReviewNote,
   deleteReviewNote as dbDeleteNote,
@@ -23,7 +24,7 @@ import {
 } from '@/lib/storage';
 
 import { secondsToDisplayTimecode, timecodeToFrames } from '@/lib/timecode';
-import { Film, Shield, Lock } from 'lucide-react';
+import { Film, Shield, Lock, Radio } from 'lucide-react';
 
 interface ReviewPageProps {
   params: Promise<{ token: string }>;
@@ -41,7 +42,6 @@ function decodeToken(token: string): any {
     );
     return JSON.parse(jsonStr);
   } catch (e) {
-    // Fallback simple base64 decode
     try {
       return JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
     } catch (err) {
@@ -59,6 +59,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
 
   const [project, setProject] = useState<Project | null>(null);
   const [cut, setCut] = useState<Cut | null>(null);
+  const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
   const [branding, setBranding] = useState<StudioBranding>({
     name: 'Studio',
     tagline: 'Review Portal',
@@ -74,6 +75,9 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
     canExport: true,
     viewOnly: false,
   });
+
+  // Client Session Control state (Request Control badge)
+  const [hasControl, setHasControl] = useState(true);
 
   // Playback state
   const [currentTime, setCurrentTime] = useState(0);
@@ -136,6 +140,9 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
         }
 
         setCut(foundCut);
+        const vUrl = await getLocalVideoBlobUrl(foundCut.id);
+        setLocalVideoUrl(vUrl);
+
         const nts = await getNotesForCut(foundCut.id);
         setNotes(nts);
         setLoading(false);
@@ -178,7 +185,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
   const handleAddNote = async (data: any) => {
     if (permissions.viewOnly || !permissions.canComment) return;
 
-    const noteId = `note_${Date.now()}`;
+    const noteId = `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     let audioUrl: string | undefined = undefined;
 
     if (data.audioBlob) {
@@ -192,6 +199,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
       project.startTimecode,
       project.dropFrame
     );
+    const frameNum = timecodeToFrames(noteTc, project.fps, project.dropFrame);
 
     let finalThumbnail = data.stillImageUrl || activeDrawingSnapshot;
     if (!finalThumbnail && videoPlayerRef.current) {
@@ -204,12 +212,12 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
       category: data.category,
       presetLabel: data.presetLabel,
       text: data.text,
-      frameNumber: timecodeToFrames(noteTc, project.fps, project.dropFrame),
+      frameNumber: frameNum,
       timecode: noteTc,
-      colorGrade: data.colorGrade,
       drawingData: activeDrawingVector || data.drawingData,
       stillImageUrl: finalThumbnail || undefined,
       audioBlobUrl: audioUrl,
+      colorGrade: data.colorGrade,
       authorName: 'Client Reviewer',
       isResolved: false,
       createdAt: new Date().toISOString(),
@@ -225,26 +233,61 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
     setOutTime(null);
   };
 
+  const handleApplyColorGrade = (grade: ColorGradeSettings) => {
+    setLivePreviewGrade(null);
+    setIsGradeOpen(false);
+    handleAddNote({
+      category: 'color',
+      presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Correction',
+      text: `Exposure: ${grade.brightness}%, Contrast: ${grade.contrast}%, Saturation: ${grade.saturation}%`,
+      colorGrade: grade,
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#090c13] text-slate-100 select-none">
-      {/* Branded Header */}
-      <header className="h-12 bg-[#0c1018] border-b border-[#1c2438] px-4 flex items-center justify-between shrink-0">
+      {/* Client Header */}
+      <header className="h-12 bg-[#0c1018] border-b border-[#1c2438] px-4 flex items-center justify-between z-30 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-xs">
+          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-xs shadow-lg shadow-blue-900/30">
             {branding.name?.charAt(0) || 'S'}
           </div>
           <div>
-            <span className="text-xs font-bold text-white block">{branding.name}</span>
-            <span className="text-[10px] text-slate-400">{project.name} · {cut.name}</span>
+            <span className="text-xs font-black text-white block leading-none">{branding.name}</span>
+            <span className="text-[9px] text-slate-400 leading-none">Client Review Session</span>
+          </div>
+
+          <span className="text-slate-600 font-mono text-xs">/</span>
+
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#141b29] border border-[#222c42] text-xs font-bold text-slate-200">
+            <span className="text-blue-400">{project.name}</span>
+            <span className="text-slate-500">•</span>
+            <span className="text-slate-300">{cut.name}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Live Session Control Button */}
+          <button
+            type="button"
+            onClick={() => setHasControl(!hasControl)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+              hasControl
+                ? 'bg-emerald-600/20 border border-emerald-500 text-emerald-300'
+                : 'bg-[#141b29] border border-[#232d44] text-slate-400 hover:text-white'
+            }`}
+            title="Toggle session control"
+          >
+            <Radio className={`w-3.5 h-3.5 ${hasControl ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
+            <span>{hasControl ? 'You Have Control' : 'Request Control'}</span>
+          </button>
+
           {permissions.viewOnly && (
             <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[10px] font-bold">
-              View-Only Portal
+              View-Only Mode
             </span>
           )}
+
           {permissions.canExport && !permissions.viewOnly && (
             <button
               onClick={() => setIsExportOpen(true)}
@@ -264,13 +307,20 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
               ref={videoPlayerRef}
               cut={cut}
               project={project}
-              localVideoUrl={null}
+              localVideoUrl={localVideoUrl}
               notes={notes}
               selectedNote={selectedNote}
+              liveGrade={livePreviewGrade || activeGrade}
+              inTime={inTime}
+              outTime={outTime}
               onTimeUpdate={setCurrentTime}
               onDurationChange={setDuration}
               onMarkIn={() => setInTime(currentTime)}
               onMarkOut={() => setOutTime(currentTime)}
+              onClearRange={() => {
+                setInTime(null);
+                setOutTime(null);
+              }}
               onOpenAddMedia={() => {}}
               onOpenCompare={() => {}}
               onUpdateFps={() => {}}
@@ -360,7 +410,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
           />
         )}
 
-        {/* Right: Notes List OR Docked Color Grading Side Panel */}
+        {/* Right: Notes List or Color Grade Panel */}
         {isGradeOpen ? (
           <ColorGradingPanel
             isOpen={isGradeOpen}
@@ -369,15 +419,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
               setLivePreviewGrade(null);
             }}
             currentGrade={activeGrade}
-            onApplyGrade={(grade, applyScope) => {
-              setActiveGrade(grade);
-              setLivePreviewGrade(null);
-              handleAddNote({
-                category: 'color',
-                presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Grade',
-                text: `Exposure: ${grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%, Contrast: ${grade.contrast}%, Sat: ${grade.saturation}%`,
-              });
-            }}
+            onApplyGrade={handleApplyColorGrade}
             onLivePreviewChange={setLivePreviewGrade}
           />
         ) : (
@@ -392,13 +434,17 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
                 videoPlayerRef.current?.seekTo(Math.max(0, (nFrames - sFrames) / project.fps));
               }}
               onToggleResolved={() => {}}
-              onDeleteNote={() => {}}
+              onDeleteNote={permissions.canComment ? async id => {
+                await dbDeleteNote(id);
+                setNotes(prev => prev.filter(n => n.id !== id));
+              } : () => {}}
               onUpdateNoteText={() => {}}
             />
           </div>
         )}
       </main>
 
+      {/* Modals */}
       {isVoiceRecordingOpen && (
         <VoiceRecorder
           onSaveAudio={blob => {

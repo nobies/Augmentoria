@@ -10,6 +10,7 @@ import { AnnotationCanvas } from '@/components/AnnotationCanvas';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
 import { StudioBrandingModal } from '@/components/StudioBrandingModal';
 import { ProjectManagerModal } from '@/components/ProjectManagerModal';
+import { AssetManagerModal } from '@/components/AssetManagerModal';
 import { ExportModal } from '@/components/ExportModal';
 import { CompareModal } from '@/components/CompareModal';
 import { AddMediaModal } from '@/components/AddMediaModal';
@@ -85,6 +86,7 @@ export default function Home() {
   // Modals
   const [isBrandingOpen, setIsBrandingOpen] = useState(false);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
+  const [isAssetsOpen, setIsAssetsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isAddMediaOpen, setIsAddMediaOpen] = useState(false);
@@ -165,6 +167,20 @@ export default function Home() {
       provider: 'compare',
       videoUrl: finalUrlA,
       videoUrlB: finalUrlB,
+    };
+    await saveCut(updatedCut);
+    setActiveCut(updatedCut);
+    setCuts(prev => prev.map(c => (c.id === updatedCut.id ? updatedCut : c)));
+    setCurrentTime(0);
+  };
+
+  // Quick Compare two cuts directly from Asset Manager
+  const handleCompareWithCut = async (cutA: Cut, cutB: Cut) => {
+    const updatedCut: Cut = {
+      ...cutA,
+      provider: 'compare',
+      videoUrl: cutA.videoUrl,
+      videoUrlB: cutB.videoUrl,
     };
     await saveCut(updatedCut);
     setActiveCut(updatedCut);
@@ -358,7 +374,7 @@ export default function Home() {
     handleAddNote({
       category: 'color',
       presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Correction',
-      text: `Exposure: ${grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%, Contrast: ${grade.contrast}%, Sat: ${grade.saturation}%, Temp: ${grade.temperature}K`,
+      text: `Brightness: ${grade.brightness}%, Contrast: ${grade.contrast}%, Saturation: ${grade.saturation}%, Temp: ${grade.temperature}K`,
       colorGrade: grade,
     });
   };
@@ -479,7 +495,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#090c13] text-slate-100 select-none">
-      {/* Top 7 Action Icons Header */}
+      {/* Top Action Icons Header */}
       <Header
         currentTool={currentTool}
         onSelectTool={setCurrentTool}
@@ -487,6 +503,7 @@ export default function Home() {
         activeProject={activeProject}
         activeCut={activeCut}
         onOpenProjects={() => setIsProjectsOpen(true)}
+        onOpenAssets={() => setIsAssetsOpen(true)}
         onOpenBranding={() => setIsBrandingOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
         onOpenShare={() => setIsShareOpen(true)}
@@ -510,10 +527,13 @@ export default function Home() {
                 notes={notes}
                 selectedNote={selectedNote}
                 liveGrade={livePreviewGrade || activeGrade}
+                inTime={inTime}
+                outTime={outTime}
                 onTimeUpdate={setCurrentTime}
                 onDurationChange={setDuration}
                 onMarkIn={handleMarkIn}
                 onMarkOut={handleMarkOut}
+                onClearRange={handleClearRange}
                 onOpenAddMedia={() => setIsAddMediaOpen(true)}
                 onOpenCompare={() => setIsCompareOpen(true)}
                 onUpdateFps={handleUpdateFps}
@@ -625,6 +645,21 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Asset & Cuts Manager Modal */}
+      {activeProject && (
+        <AssetManagerModal
+          isOpen={isAssetsOpen}
+          onClose={() => setIsAssetsOpen(false)}
+          project={activeProject}
+          cuts={cuts}
+          activeCut={activeCut}
+          onSelectCut={handleSelectCut}
+          onCompareWithCut={handleCompareWithCut}
+          onCreateCut={handleCreateCut}
+          onDeleteCut={handleDeleteCut}
+        />
+      )}
 
       {/* Notekeys Settings Modal */}
       <NotekeysModal

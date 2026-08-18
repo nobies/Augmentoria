@@ -12,6 +12,8 @@ import {
   Palette,
   Settings,
   Sparkles,
+  Film,
+  Download,
 } from 'lucide-react';
 import { Project, Cut, StudioBranding } from '@/lib/supabase';
 
@@ -22,6 +24,7 @@ interface HeaderProps {
   activeProject: Project | null;
   activeCut: Cut | null;
   onOpenProjects: () => void;
+  onOpenAssets: () => void;
   onOpenBranding: () => void;
   onOpenExport: () => void;
   onOpenShare: () => void;
@@ -37,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeProject,
   activeCut,
   onOpenProjects,
+  onOpenAssets,
   onOpenBranding,
   onOpenExport,
   onOpenShare,
@@ -46,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="h-12 bg-[#0c1018] border-b border-[#1c2438] px-3.5 flex items-center justify-between select-none z-30 shrink-0">
-      {/* Left: Studio Logo / Name & Tool Switcher */}
+      {/* Left: Studio Logo / Name & Project Switcher */}
       <div className="flex items-center gap-3">
         {/* Studio Badge */}
         <button
@@ -65,20 +69,32 @@ export const Header: React.FC<HeaderProps> = ({
 
         <span className="text-slate-600 font-mono text-xs">/</span>
 
-        {/* Project & Cut Info */}
+        {/* Project & Cut Info & Quick Asset Switcher */}
         {activeProject && (
-          <button
-            onClick={onOpenProjects}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#141b29] hover:bg-[#1c2538] border border-[#222c42] text-xs font-bold text-slate-200 transition"
-          >
-            <span className="text-blue-400">{activeProject.name}</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onOpenProjects}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#141b29] hover:bg-[#1c2538] border border-[#222c42] text-xs font-bold text-slate-200 transition"
+              title="Change Project"
+            >
+              <span className="text-blue-400">{activeProject.name}</span>
+            </button>
+
             <span className="text-slate-500">•</span>
-            <span className="text-slate-300">{activeCut?.name || 'Cut 1'}</span>
-          </button>
+
+            <button
+              onClick={onOpenAssets}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#182033] hover:bg-[#222e47] border border-blue-500/30 text-xs font-bold text-white transition group"
+              title="Open Project Video Assets Manager"
+            >
+              <Film className="w-3.5 h-3.5 text-blue-400 group-hover:text-blue-300" />
+              <span>{activeCut?.name || 'Cut 1'}</span>
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Right: Exactly 7 Rounded Action Icons (Matching Screenshot 3) */}
+      {/* Right: Exactly 8 Rounded Action Icons */}
       <div className="flex items-center gap-1 bg-[#101522] p-1 rounded-xl border border-[#1e273b]">
         {/* 1. New Cut / File+ */}
         <button
@@ -89,13 +105,13 @@ export const Header: React.FC<HeaderProps> = ({
           <Plus className="w-4 h-4" />
         </button>
 
-        {/* 2. Save / Sync */}
+        {/* 2. Assets Manager (All Project Videos) */}
         <button
-          onClick={() => {}}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-[#1a2336] transition"
-          title="Auto-Saved to Local Storage"
+          onClick={onOpenAssets}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-[#1a2336] transition"
+          title="Project Assets & Video Cuts Manager"
         >
-          <Save className="w-4 h-4" />
+          <Film className="w-4 h-4" />
         </button>
 
         {/* 3. Folder (Project Manager) */}
@@ -149,7 +165,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-[#1a2336] transition"
           title="Export Notes (PDF, EDL, SRT, CSV)"
         >
-          <Upload className="w-4 h-4" />
+          <Download className="w-4 h-4" />
         </button>
       </div>
     </header>

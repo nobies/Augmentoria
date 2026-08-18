@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Video,
   SplitSquareVertical,
+  Sliders,
   PenTool,
   X,
   Eye,
@@ -17,10 +18,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   SkipBack,
-  SkipForward,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import { Cut, Project, ReviewNote } from '@/lib/supabase';
-import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds } from '@/lib/timecode';
+import { secondsToDisplayTimecode, timecodeToFrames } from '@/lib/timecode';
 import { ColorGradeSettings } from './ColorGradingPanel';
 
 export interface VideoPlayerHandle {
@@ -83,13 +85,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const vimeoContainerRef = useRef<HTMLDivElement | null>(null);
     const vimeoPlayerInstanceRef = useRef<any>(null);
 
-    // Vimeo Compare Dual instances
+    // Compare Dual instances
     const vimeoCompareContainerARef = useRef<HTMLDivElement | null>(null);
     const vimeoCompareContainerBRef = useRef<HTMLDivElement | null>(null);
     const vimeoPlayerARef = useRef<any>(null);
     const vimeoPlayerBRef = useRef<any>(null);
-
-    // HTML5 Compare Dual instances
     const html5VideoARef = useRef<HTMLVideoElement | null>(null);
     const html5VideoBRef = useRef<HTMLVideoElement | null>(null);
 
@@ -101,10 +101,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     const [vimeoPosterDataUrl, setVimeoPosterDataUrl] = useState<string | null>(null);
 
-    // Compare Modes
+    // Compare Modes: 'split' | 'wipe' | 'fade' | 'a' | 'b'
     const [compareMode, setCompareMode] = useState<'split' | 'wipe' | 'fade' | 'a' | 'b'>('split');
-    const [wipePosition, setWipePosition] = useState<number>(50);
-    const [fadeOpacity, setFadeOpacity] = useState<number>(50);
+    const [wipePosition, setWipePosition] = useState<number>(50); // percentage 0 - 100
+    const [fadeOpacity, setFadeOpacity] = useState<number>(50); // percentage 0 - 100
+    const [isDraggingWipe, setIsDraggingWipe] = useState(false);
 
     // Drawing Overlay Visibility
     const [showMarkup, setShowMarkup] = useState(true);
@@ -123,7 +124,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     }, [cut.provider, cut.videoUrl]);
 
-    // Current Playhead Frame
+    // Current Playhead Frame calculation
     const startFramesOffset = timecodeToFrames(
       project.startTimecode || '01:00:00:00',
       project.fps,
@@ -132,26 +133,49 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const currentAbsoluteFrame = startFramesOffset + Math.round(currentTime * project.fps);
 
     // Active Note with Drawing strictly within its Frame or In/Out Range
-    const activeNoteWithMarkup = notes.find(n => {
-      if (!n.drawingData) return false;
-      const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-      const endF = n.timecodeOut
-        ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
-        : startF;
-      return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
-    });
+    // Prioritize selectedNote if user just clicked it
+    const activeNoteWithMarkup = (() => {
+      if (selectedNote?.drawingData) {
+        const sStart = timecodeToFrames(selectedNote.timecode, project.fps, project.dropFrame);
+        const sEnd = selectedNote.timecodeOut
+          ? timecodeToFrames(selectedNote.timecodeOut, project.fps, project.dropFrame)
+          : sStart;
+        if (Math.abs(currentAbsoluteFrame - sStart) <= 1 || (currentAbsoluteFrame >= sStart && currentAbsoluteFrame <= sEnd)) {
+          return selectedNote;
+        }
+      }
+      return notes.find(n => {
+        if (!n.drawingData) return false;
+        const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+        const endF = n.timecodeOut
+          ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
+          : startF;
+        return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
+      });
+    })();
 
     // Active Note with Color Grade strictly within its Frame or Range
-    const activeNoteWithGrade = notes.find(n => {
-      if (!n.colorGrade) return false;
-      const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-      const endF = n.timecodeOut
-        ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
-        : startF;
-      return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
-    });
+    const activeNoteWithGrade = (() => {
+      if (selectedNote?.colorGrade) {
+        const sStart = timecodeToFrames(selectedNote.timecode, project.fps, project.dropFrame);
+        const sEnd = selectedNote.timecodeOut
+          ? timecodeToFrames(selectedNote.timecodeOut, project.fps, project.dropFrame)
+          : sStart;
+        if (Math.abs(currentAbsoluteFrame - sStart) <= 1 || (currentAbsoluteFrame >= sStart && currentAbsoluteFrame <= sEnd)) {
+          return selectedNote;
+        }
+      }
+      return notes.find(n => {
+        if (!n.colorGrade) return false;
+        const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+        const endF = n.timecodeOut
+          ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
+          : startF;
+        return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
+      });
+    })();
 
-    // Determine active color grade to display
+    // Determine active color grade to display (only applies to current frame/range, or live panel preview)
     const effectiveGrade = liveGrade || activeNoteWithGrade?.colorGrade || null;
 
     // Compute live CSS filter style
@@ -280,7 +304,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     };
 
-    // Toggle Play/Pause
+    // Master Play/Pause Toggle
     const togglePlayback = () => {
       if (cut.provider === 'local' || cut.provider === 'drive') {
         if (videoRef.current) {
@@ -288,37 +312,33 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             videoRef.current.pause();
             setIsPlaying(false);
           } else {
-            videoRef.current.play();
+            videoRef.current.play().catch(() => {});
             setIsPlaying(true);
           }
         }
       } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
-        try {
-          if (isPlaying) {
-            vimeoPlayerInstanceRef.current.pause().catch(() => {});
-            setIsPlaying(false);
-          } else {
-            vimeoPlayerInstanceRef.current.play().catch(() => {});
-            setIsPlaying(true);
-          }
-        } catch (e) {}
+        if (isPlaying) {
+          vimeoPlayerInstanceRef.current.pause().catch(() => {});
+          setIsPlaying(false);
+        } else {
+          vimeoPlayerInstanceRef.current.play().catch(() => {});
+          setIsPlaying(true);
+        }
       } else if (cut.provider === 'compare') {
-        try {
-          if (isPlaying) {
-            vimeoPlayerARef.current?.pause().catch(() => {});
-            vimeoPlayerBRef.current?.pause().catch(() => {});
-            html5VideoARef.current?.pause();
-            html5VideoBRef.current?.pause();
-            setIsPlaying(false);
-          } else {
-            vimeoPlayerARef.current?.play().catch(() => {});
-            vimeoPlayerBRef.current?.play().catch(() => {});
-            html5VideoARef.current?.play();
-            html5VideoBRef.current?.play();
-            setIsPlaying(true);
-          }
-        } catch (e) {}
-      } else if (cut.provider === 'standalone') {
+        if (isPlaying) {
+          vimeoPlayerARef.current?.pause().catch(() => {});
+          vimeoPlayerBRef.current?.pause().catch(() => {});
+          html5VideoARef.current?.pause();
+          html5VideoBRef.current?.pause();
+          setIsPlaying(false);
+        } else {
+          vimeoPlayerARef.current?.play().catch(() => {});
+          vimeoPlayerBRef.current?.play().catch(() => {});
+          html5VideoARef.current?.play().catch(() => {});
+          html5VideoBRef.current?.play().catch(() => {});
+          setIsPlaying(true);
+        }
+      } else {
         setIsPlaying(!isPlaying);
       }
     };
@@ -327,56 +347,159 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const handleVolumeChange = (newVol: number) => {
       setVolume(newVol);
       setIsMuted(newVol === 0);
-      if (videoRef.current) videoRef.current.volume = newVol;
+      if (videoRef.current) {
+        videoRef.current.volume = newVol;
+        videoRef.current.muted = newVol === 0;
+      }
+      if (html5VideoARef.current) {
+        html5VideoARef.current.volume = newVol;
+        html5VideoARef.current.muted = newVol === 0;
+      }
+      if (html5VideoBRef.current) {
+        html5VideoBRef.current.volume = 0; // Keep secondary muted
+        html5VideoBRef.current.muted = true;
+      }
       if (vimeoPlayerInstanceRef.current) {
         try {
           vimeoPlayerInstanceRef.current.setVolume(newVol).catch(() => {});
+        } catch (e) {}
+      }
+      if (vimeoPlayerARef.current) {
+        try {
+          vimeoPlayerARef.current.setVolume(newVol).catch(() => {});
+        } catch (e) {}
+      }
+      if (vimeoPlayerBRef.current) {
+        try {
+          vimeoPlayerBRef.current.setVolume(0).catch(() => {});
         } catch (e) {}
       }
     };
 
     const toggleMute = () => {
       if (isMuted) {
-        setIsMuted(false);
-        handleVolumeChange(volume || 0.8);
+        handleVolumeChange(volume || 1);
       } else {
-        setIsMuted(true);
-        if (videoRef.current) videoRef.current.volume = 0;
-        if (vimeoPlayerInstanceRef.current) {
-          try {
-            vimeoPlayerInstanceRef.current.setVolume(0).catch(() => {});
-          } catch (e) {}
-        }
+        handleVolumeChange(0);
       }
     };
 
-    // Single Vimeo Instance Loader
+    // Synchronize Compare Players (HTML5 or Vimeo)
+    const isVimeoA = Boolean(cut.videoUrl?.includes('vimeo.com'));
+    const isVimeoB = Boolean(cut.videoUrlB?.includes('vimeo.com'));
+
     useEffect(() => {
-      let isMounted = true;
+      if (cut.provider === 'compare') {
+        let isMounted = true;
 
-      if (cut.provider === 'vimeo' && vimeoContainerRef.current && cut.videoUrl) {
-        if (vimeoPlayerInstanceRef.current) {
+        const loadScript = () => {
+          return new Promise<void>((resolve, reject) => {
+            if ((window as any).Vimeo) {
+              resolve();
+              return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://player.vimeo.com/api/player.js';
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load Vimeo SDK'));
+            document.body.appendChild(script);
+          });
+        };
+
+        loadScript()
+          .then(() => {
+            if (!isMounted) return;
+            const Vimeo = (window as any).Vimeo;
+
+            // Setup Clip A
+            if (isVimeoA && vimeoCompareContainerARef.current && cut.videoUrl) {
+              vimeoCompareContainerARef.current.innerHTML = '';
+              const pA = new Vimeo.Player(vimeoCompareContainerARef.current, {
+                url: cut.videoUrl,
+                responsive: true,
+                controls: false,
+                dnt: true,
+                muted: false,
+              });
+              vimeoPlayerARef.current = pA;
+
+              pA.ready().then(async () => {
+                try {
+                  const d = await pA.getDuration();
+                  if (isMounted && d > 0) {
+                    setDuration(d);
+                    onDurationChange(d);
+                  }
+                } catch (e) {}
+              });
+
+              pA.on('timeupdate', (data: { seconds: number; duration: number }) => {
+                if (isMounted) {
+                  setCurrentTime(data.seconds);
+                  onTimeUpdate(data.seconds);
+                }
+              });
+            }
+
+            // Setup Clip B
+            if (isVimeoB && vimeoCompareContainerBRef.current && cut.videoUrlB) {
+              vimeoCompareContainerBRef.current.innerHTML = '';
+              const pB = new Vimeo.Player(vimeoCompareContainerBRef.current, {
+                url: cut.videoUrlB,
+                responsive: true,
+                controls: false,
+                dnt: true,
+                muted: true, // Keep secondary muted
+              });
+              vimeoPlayerBRef.current = pB;
+            }
+          })
+          .catch(() => {});
+
+        return () => {
+          isMounted = false;
           try {
-            vimeoPlayerInstanceRef.current.destroy().catch(() => {});
+            vimeoPlayerARef.current?.destroy().catch(() => {});
+            vimeoPlayerBRef.current?.destroy().catch(() => {});
           } catch (e) {}
-        }
+        };
+      }
+    }, [cut.provider, cut.videoUrl, cut.videoUrlB, isVimeoA, isVimeoB]);
 
-        vimeoContainerRef.current.innerHTML = '';
+    // Single Vimeo Setup
+    useEffect(() => {
+      if (cut.provider === 'vimeo' && cut.videoUrl && vimeoContainerRef.current) {
+        let isMounted = true;
+        const loadScript = () => {
+          return new Promise<void>((resolve, reject) => {
+            if ((window as any).Vimeo) {
+              resolve();
+              return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://player.vimeo.com/api/player.js';
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load Vimeo SDK'));
+            document.body.appendChild(script);
+          });
+        };
 
-        import('@vimeo/player')
-          .then(module => {
+        loadScript()
+          .then(() => {
             if (!isMounted || !vimeoContainerRef.current) return;
-            const Vimeo = module.default || module;
-            const player = new (Vimeo as any)(vimeoContainerRef.current, {
+            vimeoContainerRef.current.innerHTML = '';
+            const Vimeo = (window as any).Vimeo;
+            const player = new Vimeo.Player(vimeoContainerRef.current, {
               url: cut.videoUrl,
               responsive: true,
-              autoplay: false,
               controls: false,
+              dnt: true,
             });
-
             vimeoPlayerInstanceRef.current = player;
 
-            player.on('loaded', async () => {
+            player.ready().then(async () => {
               try {
                 const d = await player.getDuration();
                 if (isMounted && d > 0) {
@@ -443,6 +566,29 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     };
 
+    // Synchronize HTML5 Compare Video A & B
+    const handleCompareATimeUpdate = () => {
+      if (html5VideoARef.current) {
+        const t = html5VideoARef.current.currentTime;
+        setCurrentTime(t);
+        onTimeUpdate(t);
+        // Sync B with A if drift exceeds 0.2s
+        if (html5VideoBRef.current && Math.abs(html5VideoBRef.current.currentTime - t) > 0.2) {
+          html5VideoBRef.current.currentTime = t;
+        }
+      }
+    };
+
+    const handleCompareALoadedMetadata = () => {
+      if (html5VideoARef.current) {
+        const d = html5VideoARef.current.duration || 0;
+        if (d > 0) {
+          setDuration(d);
+          onDurationChange(d);
+        }
+      }
+    };
+
     // Keyboard Shortcuts
     useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -475,9 +621,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isPlaying, duration, project.fps, currentTime]);
-
-    const isVimeoA = Boolean(cut.videoUrl?.includes('vimeo.com'));
-    const isVimeoB = Boolean(cut.videoUrlB?.includes('vimeo.com'));
 
     const videoSrc =
       cut.provider === 'local'
@@ -546,40 +689,204 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           className="relative flex-1 min-h-[220px] bg-black flex items-center justify-center overflow-hidden select-none transition-all duration-150"
         >
           {cut.provider === 'compare' ? (
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
-              {/* Compare Mode Switcher */}
-              <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-0.5 rounded-lg flex items-center gap-1 z-30 shadow-2xl">
-                {['split', 'wipe', 'fade', 'a', 'b'].map(m => (
+            <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
+              {/* Compare Mode Switcher & Controls Overlay */}
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-1 rounded-xl flex items-center gap-1.5 z-30 shadow-2xl">
+                {(['split', 'wipe', 'fade', 'a', 'b'] as const).map(m => (
                   <button
                     key={m}
                     type="button"
-                    onClick={() => setCompareMode(m as any)}
-                    className={`px-2 py-0.5 rounded text-[9px] font-bold capitalize transition ${
-                      compareMode === m ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                    onClick={() => setCompareMode(m)}
+                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition ${
+                      compareMode === m
+                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
+                        : 'text-slate-400 hover:text-white hover:bg-[#182030]'
                     }`}
                   >
                     {m}
                   </button>
                 ))}
+
+                {/* Wipe Position Slider in Wipe Mode */}
+                {compareMode === 'wipe' && (
+                  <div className="flex items-center gap-1.5 pl-2 border-l border-[#232d44]">
+                    <span className="text-[9px] font-mono text-purple-300">Wipe:</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={wipePosition}
+                      onChange={e => setWipePosition(Number(e.target.value))}
+                      className="w-20 accent-purple-500 cursor-pointer h-1.5"
+                    />
+                    <span className="text-[9px] font-mono text-slate-400">{wipePosition}%</span>
+                  </div>
+                )}
+
+                {/* Fade Opacity Slider in Fade Mode */}
+                {compareMode === 'fade' && (
+                  <div className="flex items-center gap-1.5 pl-2 border-l border-[#232d44]">
+                    <span className="text-[9px] font-mono text-purple-300">Fade (B):</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={fadeOpacity}
+                      onChange={e => setFadeOpacity(Number(e.target.value))}
+                      className="w-20 accent-purple-500 cursor-pointer h-1.5"
+                    />
+                    <span className="text-[9px] font-mono text-slate-400">{fadeOpacity}%</span>
+                  </div>
+                )}
               </div>
 
-              {/* Compare Screen */}
+              {/* 1. SPLIT MODE (Side-by-Side) */}
               {compareMode === 'split' && (
                 <div className="w-full h-full flex">
-                  <div className="w-1/2 h-full relative border-r border-slate-700">
+                  <div className="w-1/2 h-full relative border-r border-slate-700 bg-black flex items-center justify-center">
+                    <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-blue-600/80 text-[9px] font-bold text-white uppercase">
+                      Clip A
+                    </span>
                     {isVimeoA ? (
                       <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
-                      <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
+                      <video
+                        ref={html5VideoARef}
+                        src={cut.videoUrl}
+                        playsInline
+                        onTimeUpdate={handleCompareATimeUpdate}
+                        onLoadedMetadata={handleCompareALoadedMetadata}
+                        className="w-full h-full object-contain"
+                      />
                     )}
                   </div>
-                  <div className="w-1/2 h-full relative">
+                  <div className="w-1/2 h-full relative bg-black flex items-center justify-center">
+                    <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-purple-600/80 text-[9px] font-bold text-white uppercase">
+                      Clip B
+                    </span>
                     {isVimeoB ? (
                       <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
-                      <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
+                      <video
+                        ref={html5VideoBRef}
+                        src={cut.videoUrlB}
+                        playsInline
+                        muted
+                        className="w-full h-full object-contain"
+                      />
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* 2. WIPE MODE (Interactive Vertical Curtain) */}
+              {compareMode === 'wipe' && (
+                <div className="w-full h-full relative">
+                  {/* Background Clip B */}
+                  <div className="absolute inset-0 w-full h-full">
+                    {isVimeoB ? (
+                      <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline muted className="w-full h-full object-contain" />
+                    )}
+                  </div>
+
+                  {/* Foreground Clip A with dynamic clip-path */}
+                  <div
+                    className="absolute inset-0 w-full h-full"
+                    style={{ clipPath: `inset(0 ${100 - wipePosition}% 0 0)` }}
+                  >
+                    {isVimeoA ? (
+                      <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video
+                        ref={html5VideoARef}
+                        src={cut.videoUrl}
+                        playsInline
+                        onTimeUpdate={handleCompareATimeUpdate}
+                        onLoadedMetadata={handleCompareALoadedMetadata}
+                        className="w-full h-full object-contain"
+                      />
+                    )}
+                  </div>
+
+                  {/* Vertical Wipe Line Divider */}
+                  <div
+                    className="absolute top-0 bottom-0 w-1 bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.8)] z-20 cursor-ew-resize flex items-center justify-center"
+                    style={{ left: `${wipePosition}%` }}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-purple-600 border-2 border-white shadow flex items-center justify-center text-[8px] text-white font-bold">
+                      ↔
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. FADE MODE (Dissolve / Opacity Overlay) */}
+              {compareMode === 'fade' && (
+                <div className="w-full h-full relative">
+                  {/* Base Clip A */}
+                  <div className="absolute inset-0 w-full h-full">
+                    {isVimeoA ? (
+                      <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video
+                        ref={html5VideoARef}
+                        src={cut.videoUrl}
+                        playsInline
+                        onTimeUpdate={handleCompareATimeUpdate}
+                        onLoadedMetadata={handleCompareALoadedMetadata}
+                        className="w-full h-full object-contain"
+                      />
+                    )}
+                  </div>
+
+                  {/* Overlaid Clip B with Opacity */}
+                  <div
+                    className="absolute inset-0 w-full h-full pointer-events-none transition-opacity"
+                    style={{ opacity: fadeOpacity / 100 }}
+                  >
+                    {isVimeoB ? (
+                      <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline muted className="w-full h-full object-contain" />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. A ONLY MODE */}
+              {compareMode === 'a' && (
+                <div className="w-full h-full relative">
+                  <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-blue-600/80 text-[9px] font-bold text-white uppercase">
+                    Clip A (Primary)
+                  </span>
+                  {isVimeoA ? (
+                    <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                  ) : (
+                    <video
+                      ref={html5VideoARef}
+                      src={cut.videoUrl}
+                      playsInline
+                      onTimeUpdate={handleCompareATimeUpdate}
+                      onLoadedMetadata={handleCompareALoadedMetadata}
+                      className="w-full h-full object-contain"
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* 5. B ONLY MODE */}
+              {compareMode === 'b' && (
+                <div className="w-full h-full relative">
+                  <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-purple-600/80 text-[9px] font-bold text-white uppercase">
+                    Clip B (Compare)
+                  </span>
+                  {isVimeoB ? (
+                    <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                  ) : (
+                    <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline muted className="w-full h-full object-contain" />
+                  )}
                 </div>
               )}
 
@@ -616,7 +923,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
           )}
 
-          {/* On-Screen Drawing Markup Overlay */}
+          {/* On-Screen Drawing / Plate Markup Overlay */}
           {activeNoteWithMarkup?.drawingData && showMarkup && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
               <img
@@ -632,12 +939,20 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             <button
               type="button"
               onClick={() => setShowMarkup(!showMarkup)}
-              className="absolute top-2 right-2 z-30 px-2 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-amber-500/50 text-amber-300 text-[10px] font-bold flex items-center gap-1 shadow-lg hover:bg-black transition"
+              className="absolute top-2 right-2 z-30 px-2.5 py-1 rounded-lg bg-black/85 backdrop-blur-md border border-amber-500/50 text-amber-300 text-[10px] font-bold flex items-center gap-1.5 shadow-xl hover:bg-black transition active:scale-95"
               title="Toggle Markup Visibility"
             >
-              {showMarkup ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-              <span>{showMarkup ? 'Markup ON' : 'Markup OFF'}</span>
+              {showMarkup ? <Eye className="w-3.5 h-3.5 text-amber-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+              <span>{showMarkup ? 'Drawing ON' : 'Drawing OFF'}</span>
             </button>
+          )}
+
+          {/* Active Color Grade Badge in Corner if Active on Frame */}
+          {activeNoteWithGrade?.colorGrade && (
+            <div className="absolute top-2 left-2 z-30 px-2 py-0.5 rounded-lg bg-black/80 backdrop-blur-md border border-purple-500/40 text-purple-300 text-[9px] font-bold flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-purple-400" />
+              <span>Grade: {activeNoteWithGrade.colorGrade.preset !== 'none' ? activeNoteWithGrade.colorGrade.preset : 'Custom'}</span>
+            </div>
           )}
         </div>
 

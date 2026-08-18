@@ -14,6 +14,9 @@ import {
   RotateCw,
   Maximize2,
   Sliders,
+  Image as ImageIcon,
+  Sparkles,
+  RefreshCcw,
 } from 'lucide-react';
 
 interface AnnotationCanvasProps {
@@ -53,7 +56,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [history, setHistory] = useState<ImageData[]>([]);
 
-  // Placed Watermark / Reference Image State
+  // Placed Reference / Plate / Watermark Image State
   const [placedImage, setPlacedImage] = useState<PlacedImage | null>(null);
   const [imageOpacity, setImageOpacity] = useState<number>(1);
   const [imageScale, setImageScale] = useState<number>(1);
@@ -75,6 +78,9 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         setHistory([ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)]);
       }
       setPlacedImage(null);
+      setImageOpacity(1);
+      setImageScale(1);
+      setImageRotation(0);
     }
   }, [isOpen]);
 
@@ -113,7 +119,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     }
   };
 
-  // Upload and place watermark image
+  // Upload and place image plate on shot
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -122,8 +128,8 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const maxWidth = CANVAS_WIDTH * 0.35;
-        const maxHeight = CANVAS_HEIGHT * 0.35;
+        const maxWidth = CANVAS_WIDTH * 0.45;
+        const maxHeight = CANVAS_HEIGHT * 0.45;
         let w = img.width;
         let h = img.height;
         if (w > maxWidth || h > maxHeight) {
@@ -139,8 +145,8 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
           w,
           h,
           opacity: imageOpacity,
-          rotation: 0,
-          scale: 1,
+          rotation: imageRotation,
+          scale: imageScale,
         };
         setPlacedImage(newPlaced);
         setActiveTool('image');
@@ -276,32 +282,35 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const drawingCanvas = canvasRef.current;
     if (!drawingCanvas) return;
 
-    // 1. Composite final vector with placed image
+    // 1. Composite final vector overlay with placed image plate
     const finalDrawingCanvas = document.createElement('canvas');
     finalDrawingCanvas.width = CANVAS_WIDTH;
     finalDrawingCanvas.height = CANVAS_HEIGHT;
     const fCtx = finalDrawingCanvas.getContext('2d');
     if (!fCtx) return;
 
-    // Draw placed watermark/plate
+    // Draw placed watermark/plate with rotation, scale and opacity
     if (placedImage) {
       fCtx.save();
       fCtx.globalAlpha = imageOpacity;
-      const centerX = placedImage.x + (placedImage.w * imageScale) / 2;
-      const centerY = placedImage.y + (placedImage.h * imageScale) / 2;
+      const effectiveW = placedImage.w * imageScale;
+      const effectiveH = placedImage.h * imageScale;
+      const centerX = placedImage.x + effectiveW / 2;
+      const centerY = placedImage.y + effectiveH / 2;
+
       fCtx.translate(centerX, centerY);
       fCtx.rotate((imageRotation * Math.PI) / 180);
       fCtx.drawImage(
         placedImage.img,
-        -(placedImage.w * imageScale) / 2,
-        -(placedImage.h * imageScale) / 2,
-        placedImage.w * imageScale,
-        placedImage.h * imageScale
+        -effectiveW / 2,
+        -effectiveH / 2,
+        effectiveW,
+        effectiveH
       );
       fCtx.restore();
     }
 
-    // Draw brush strokes
+    // Draw brush & shape vector strokes
     fCtx.drawImage(drawingCanvas, 0, 0);
     const drawingDataUrl = finalDrawingCanvas.toDataURL('image/png');
 
@@ -323,120 +332,138 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       sCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
 
+    // Composite vector overlay onto snapshot
     sCtx.drawImage(finalDrawingCanvas, 0, 0);
-    const snapshotDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.88);
+    const snapshotDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.9);
 
     onSaveDrawing(drawingDataUrl, snapshotDataUrl);
   };
 
+  const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#ffffff'];
+
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 z-40 bg-black/75 backdrop-blur-xs flex flex-col items-center justify-between select-none"
-    >
-      {/* Top Floating Action Toolbar */}
-      <div className="mt-3 px-3 py-1.5 bg-[#0f1422]/95 border border-[#222d44] rounded-2xl shadow-2xl flex items-center gap-3 text-white z-50">
-        {/* Drawing Tools */}
-        <div className="flex items-center gap-1 bg-[#141b29] p-1 rounded-xl border border-[#202b40]">
+    <div className="absolute inset-0 z-40 bg-black/75 backdrop-blur-sm flex flex-col justify-between p-3 select-none">
+      {/* Top Floating Action Bar */}
+      <div className="flex items-center justify-between bg-[#111723]/95 backdrop-blur-md border border-[#232d44] p-2 rounded-2xl shadow-2xl max-w-4xl mx-auto w-full z-50">
+        {/* Tools Selection */}
+        <div className="flex items-center gap-1">
           {[
-            { id: 'arrow', label: 'Arrow', icon: MoveRight },
-            { id: 'pen', label: 'Pen', icon: PenTool },
-            { id: 'rect', label: 'Box', icon: Square },
-            { id: 'circle', label: 'Circle', icon: Circle },
+            { id: 'arrow', icon: MoveRight, label: 'Arrow' },
+            { id: 'pen', icon: PenTool, label: 'Pen' },
+            { id: 'rect', icon: Square, label: 'Rectangle' },
+            { id: 'circle', icon: Circle, label: 'Circle' },
           ].map(t => {
             const Icon = t.icon;
             return (
               <button
                 key={t.id}
+                type="button"
                 onClick={() => setActiveTool(t.id as Tool)}
-                className={`p-1.5 rounded-lg transition active:scale-95 ${
+                className={`p-2 rounded-xl transition ${
                   activeTool === t.id
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white hover:bg-[#1a2336]'
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40'
+                    : 'text-slate-400 hover:text-white hover:bg-[#1a2233]'
                 }`}
                 title={t.label}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className="w-4 h-4" />
               </button>
             );
           })}
+
+          <label
+            className={`p-2 rounded-xl cursor-pointer transition flex items-center gap-1 ${
+              activeTool === 'image' || placedImage
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
+                : 'text-slate-400 hover:text-white hover:bg-[#1a2233]'
+            }`}
+            title="Upload Watermark / Reference Image"
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span className="text-[10px] font-bold hidden sm:inline">Add Image</span>
+            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          </label>
         </div>
 
-        {/* Colors */}
-        <div className="flex items-center gap-1.5">
-          {['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#ffffff'].map(c => (
+        {/* Colors Palette */}
+        <div className="flex items-center gap-1.5 px-3 border-x border-[#232d44]">
+          {colors.map(c => (
             <button
               key={c}
+              type="button"
               onClick={() => setColor(c)}
-              className={`w-5 h-5 rounded-full border-2 transition ${
-                color === c ? 'border-white scale-110 shadow' : 'border-transparent opacity-80'
+              className={`w-6 h-6 rounded-full transition-transform ${
+                color === c ? 'scale-125 ring-2 ring-white shadow-md' : 'opacity-80 hover:opacity-100'
               }`}
               style={{ backgroundColor: c }}
             />
           ))}
         </div>
 
-        {/* Upload Watermark Image */}
-        <label className="cursor-pointer">
-          <div
-            className={`px-2 py-1 rounded-xl border text-xs font-bold flex items-center gap-1 transition ${
-              placedImage
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                : 'bg-[#141b29] border-[#222c42] text-slate-300 hover:text-white'
-            }`}
-            title="Upload Watermark / Reference Image"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>{placedImage ? 'Image Placed' : 'Add Image'}</span>
-          </div>
-          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-        </label>
+        {/* Stroke Width Slider */}
+        <div className="flex items-center gap-2 px-2">
+          <span className="text-[10px] font-mono text-slate-400">Size:</span>
+          <input
+            type="range"
+            min="2"
+            max="12"
+            value={strokeWidth}
+            onChange={e => setStrokeWidth(Number(e.target.value))}
+            className="w-16 accent-blue-500 cursor-pointer"
+          />
+        </div>
 
-        {/* History / Clear */}
+        {/* Undo / Clear Actions */}
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={handleUndo}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1a2336] transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1a2233] transition"
             title="Undo"
           >
-            <Undo2 className="w-3.5 h-3.5" />
+            <Undo2 className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={handleClear}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-[#1a2336] transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-[#1a2233] transition"
             title="Clear All"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Commit / Cancel */}
-        <div className="flex items-center gap-1.5 pl-2 border-l border-[#222d44]">
+        {/* Save / Cancel Buttons */}
+        <div className="flex items-center gap-1.5 pl-2 border-l border-[#232d44]">
           <button
+            type="button"
             onClick={onCancel}
-            className="p-1.5 rounded-xl bg-[#171f30] hover:bg-slate-700 text-slate-300 transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1a2233] transition"
             title="Cancel"
           >
             <X className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={handleSave}
-            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1 shadow-lg shadow-blue-900/30 transition active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-500 text-white text-xs font-bold shadow-lg shadow-green-900/30 transition active:scale-95"
           >
-            <Check className="w-3.5 h-3.5" />
-            <span>Stamp Note</span>
+            <Check className="w-4 h-4" />
+            <span>Apply to Note</span>
           </button>
         </div>
       </div>
 
-      {/* Watermark / Image Controls Bar (When Image is Placed) */}
+      {/* Floating Image Control Bar when an Image is Placed */}
       {placedImage && (
-        <div className="mt-2 px-3 py-1.5 bg-[#0f1422]/95 border border-amber-500/30 rounded-xl shadow-2xl flex items-center gap-4 text-xs text-white z-50 animate-in fade-in">
-          <span className="text-[10px] font-bold uppercase text-amber-400">Image Controls:</span>
+        <div className="bg-[#141b29]/95 backdrop-blur-md border border-purple-500/40 p-2.5 rounded-2xl shadow-2xl max-w-2xl mx-auto w-full z-50 flex items-center justify-between gap-3 text-xs my-1 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-1.5 text-purple-300 font-bold">
+            <ImageIcon className="w-4 h-4 text-purple-400" />
+            <span>Image Controls:</span>
+          </div>
 
-          {/* Scale Slider */}
+          {/* Scale */}
           <div className="flex items-center gap-1.5">
-            <Maximize2 className="w-3 h-3 text-slate-400" />
             <span className="text-[10px] text-slate-400">Scale:</span>
             <input
               type="range"
@@ -445,14 +472,13 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
               step="0.05"
               value={imageScale}
               onChange={e => setImageScale(Number(e.target.value))}
-              className="w-20 accent-amber-500 cursor-pointer"
+              className="w-16 accent-purple-500 cursor-pointer"
             />
-            <span className="text-[10px] font-mono text-amber-300">{Math.round(imageScale * 100)}%</span>
+            <span className="text-[10px] font-mono text-purple-300">{Math.round(imageScale * 100)}%</span>
           </div>
 
-          {/* Rotation Slider */}
+          {/* Rotation */}
           <div className="flex items-center gap-1.5">
-            <RotateCw className="w-3 h-3 text-slate-400" />
             <span className="text-[10px] text-slate-400">Rotate:</span>
             <input
               type="range"
@@ -461,14 +487,13 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
               step="5"
               value={imageRotation}
               onChange={e => setImageRotation(Number(e.target.value))}
-              className="w-20 accent-amber-500 cursor-pointer"
+              className="w-16 accent-purple-500 cursor-pointer"
             />
-            <span className="text-[10px] font-mono text-amber-300">{imageRotation}°</span>
+            <span className="text-[10px] font-mono text-purple-300">{imageRotation}°</span>
           </div>
 
-          {/* Opacity Slider */}
+          {/* Opacity */}
           <div className="flex items-center gap-1.5">
-            <Sliders className="w-3 h-3 text-slate-400" />
             <span className="text-[10px] text-slate-400">Opacity:</span>
             <input
               type="range"
@@ -477,64 +502,108 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
               step="0.05"
               value={imageOpacity}
               onChange={e => setImageOpacity(Number(e.target.value))}
-              className="w-20 accent-amber-500 cursor-pointer"
+              className="w-16 accent-purple-500 cursor-pointer"
             />
-            <span className="text-[10px] font-mono text-amber-300">{Math.round(imageOpacity * 100)}%</span>
+            <span className="text-[10px] font-mono text-purple-300">{Math.round(imageOpacity * 100)}%</span>
           </div>
 
-          {/* Remove Image */}
+          {/* Reset Transforms */}
+          <button
+            type="button"
+            onClick={() => {
+              setImageScale(1);
+              setImageRotation(0);
+              setImageOpacity(1);
+            }}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#1f283d] transition"
+            title="Reset Transformations"
+          >
+            <RefreshCcw className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Delete Placed Image */}
           <button
             type="button"
             onClick={() => setPlacedImage(null)}
-            className="text-red-400 hover:text-red-300 text-[10px] font-bold ml-1"
+            className="p-1 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-950/40 transition"
+            title="Remove Image"
           >
-            Remove Image
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
       {/* Main Interactive Freeze-Frame Canvas Container */}
-      <div className="relative flex-1 w-full flex items-center justify-center p-2 overflow-hidden">
-        {/* Background Poster (for Vimeo / Local preview while drawing) */}
-        {posterDataUrl && (
+      <div
+        ref={containerRef}
+        className="relative flex-1 w-full max-h-[82vh] flex items-center justify-center overflow-hidden my-auto"
+      >
+        {/* Underlay Video Frame Background */}
+        {videoElement && videoElement.videoWidth > 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <canvas
+              ref={node => {
+                if (node && videoElement) {
+                  node.width = CANVAS_WIDTH;
+                  node.height = CANVAS_HEIGHT;
+                  const ctx = node.getContext('2d');
+                  if (ctx) ctx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                }
+              }}
+              className="w-full h-full object-contain opacity-95"
+            />
+          </div>
+        ) : posterDataUrl ? (
           <img
             src={posterDataUrl}
             alt="Freeze Frame"
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-90"
+            className="absolute inset-0 w-full h-full object-contain opacity-95 pointer-events-none"
           />
+        ) : (
+          <div className="absolute inset-0 bg-[#090d14]" />
         )}
 
-        {/* Placed Image Layer */}
+        {/* Placed Interactive Image Overlay Container */}
         {placedImage && (
           <div
-            style={{
-              position: 'absolute',
-              left: `${(placedImage.x / CANVAS_WIDTH) * 100}%`,
-              top: `${(placedImage.y / CANVAS_HEIGHT) * 100}%`,
-              width: `${((placedImage.w * imageScale) / CANVAS_WIDTH) * 100}%`,
-              height: `${((placedImage.h * imageScale) / CANVAS_HEIGHT) * 100}%`,
-              opacity: imageOpacity,
-              transform: `rotate(${imageRotation}deg)`,
-              transformOrigin: 'center center',
-            }}
-            className="pointer-events-none ring-2 ring-amber-400/80 rounded"
+            className="absolute inset-0 pointer-events-none flex items-center justify-center"
+            style={{ width: '100%', height: '100%' }}
           >
-            <img src={placedImage.img.src} alt="Placed Watermark" className="w-full h-full object-contain" />
+            <div
+              style={{
+                position: 'absolute',
+                left: `${(placedImage.x / CANVAS_WIDTH) * 100}%`,
+                top: `${(placedImage.y / CANVAS_HEIGHT) * 100}%`,
+                width: `${((placedImage.w * imageScale) / CANVAS_WIDTH) * 100}%`,
+                height: `${((placedImage.h * imageScale) / CANVAS_HEIGHT) * 100}%`,
+                opacity: imageOpacity,
+                transform: `rotate(${imageRotation}deg)`,
+                cursor: 'grab',
+                pointerEvents: 'auto',
+              }}
+              className="border-2 border-dashed border-purple-500 rounded shadow-2xl group"
+            >
+              <img
+                src={placedImage.img.src}
+                alt="Placed plate"
+                className="w-full h-full object-contain pointer-events-none select-none"
+              />
+              <span className="absolute -top-5 left-0 px-1.5 py-0.5 rounded bg-purple-600 text-white text-[8px] font-bold">
+                Drag to Move
+              </span>
+            </div>
           </div>
         )}
 
-        {/* Drawing Vector Canvas */}
+        {/* Foreground Active Vector Drawing Canvas */}
         <canvas
           ref={canvasRef}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          className="relative w-full h-full object-contain cursor-crosshair z-30"
+          onMouseLeave={handleMouseUp}
+          className="relative z-20 w-full h-full object-contain cursor-crosshair"
         />
-      </div>
-
-      <div className="mb-2 text-[10px] text-slate-400 font-medium">
-        Draw on freeze frame • Drag image to reposition • Click Stamp Note to save
       </div>
     </div>
   );

@@ -34,8 +34,9 @@ export interface Cut {
   id: string;
   projectId: string;
   name: string;
-  provider: 'local' | 'drive' | 'youtube' | 'vimeo' | 'standalone';
+  provider: 'local' | 'drive' | 'youtube' | 'vimeo' | 'standalone' | 'compare';
   videoUrl?: string;
+  videoUrlB?: string;
   driveFileId?: string;
   durationSeconds?: number;
   createdAt?: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { MediaSourceBar } from '@/components/MediaSourceBar';
 import { VideoPlayer, VideoPlayerHandle } from '@/components/VideoPlayer';
@@ -12,6 +12,7 @@ import { VoiceRecorder } from '@/components/VoiceRecorder';
 import { StudioBrandingModal } from '@/components/StudioBrandingModal';
 import { ProjectManagerModal } from '@/components/ProjectManagerModal';
 import { ExportModal } from '@/components/ExportModal';
+import { CompareModal } from '@/components/CompareModal';
 
 import {
   Project,
@@ -76,6 +77,7 @@ export default function Home() {
   const [isBrandingOpen, setIsBrandingOpen] = useState(false);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isDrawingOpen, setIsDrawingOpen] = useState(false);
   const [isVoiceRecordingOpen, setIsVoiceRecordingOpen] = useState(false);
 
@@ -113,16 +115,16 @@ export default function Home() {
     init();
   }, []);
 
-  // Direct Update Source from MediaSourceBar (Vimeo, YouTube, Local, Standalone)
+  // Update Source
   const handleUpdateSource = async (
     url: string,
-    provider: 'local' | 'youtube' | 'vimeo' | 'standalone'
+    provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare'
   ) => {
     if (!activeCut) return;
     const updatedCut: Cut = {
       ...activeCut,
       provider,
-      videoUrl: url,
+      videoUrl: url || activeCut.videoUrl, // Preserve videoUrl when switching to standalone
     };
     await saveCut(updatedCut);
     setActiveCut(updatedCut);
@@ -135,7 +137,22 @@ export default function Home() {
     }
   };
 
-  // Direct Update FPS
+  // Apply Compare Mode
+  const handleApplyCompare = async (urlA: string, urlB: string) => {
+    if (!activeCut) return;
+    const updatedCut: Cut = {
+      ...activeCut,
+      provider: 'compare',
+      videoUrl: urlA,
+      videoUrlB: urlB,
+    };
+    await saveCut(updatedCut);
+    setActiveCut(updatedCut);
+    setCuts(prev => prev.map(c => (c.id === updatedCut.id ? updatedCut : c)));
+    setCurrentTime(0);
+  };
+
+  // Update FPS
   const handleUpdateFps = async (newFps: number) => {
     if (!activeProject) return;
     const updatedProj: Project = { ...activeProject, fps: newFps };
@@ -144,7 +161,7 @@ export default function Home() {
     setProjects(prev => prev.map(p => (p.id === updatedProj.id ? updatedProj : p)));
   };
 
-  // Direct Update Start TC
+  // Update Start TC
   const handleUpdateStartTc = async (newStartTc: string) => {
     if (!activeProject) return;
     const updatedProj: Project = { ...activeProject, startTimecode: newStartTc };
@@ -153,7 +170,7 @@ export default function Home() {
     setProjects(prev => prev.map(p => (p.id === updatedProj.id ? updatedProj : p)));
   };
 
-  // Direct Update Drop Frame
+  // Update Drop Frame
   const handleUpdateDropFrame = async (df: boolean) => {
     if (!activeProject) return;
     const updatedProj: Project = { ...activeProject, dropFrame: df };
@@ -162,7 +179,7 @@ export default function Home() {
     setProjects(prev => prev.map(p => (p.id === updatedProj.id ? updatedProj : p)));
   };
 
-  // Direct File Upload from Top Bar
+  // File Upload
   const handleUploadFile = async (file: File) => {
     if (!activeCut) return;
     const vUrl = await saveLocalVideoFile(activeCut.id, file);
@@ -221,7 +238,7 @@ export default function Home() {
     setOutTime(null);
   };
 
-  // Current Display Timecode
+  // Display Timecodes
   const currentTc = activeProject
     ? secondsToDisplayTimecode(
         currentTime,
@@ -313,7 +330,6 @@ export default function Home() {
     await saveReviewNote(newNote);
     setNotes(prev => [...prev, newNote].sort((a, b) => a.frameNumber - b.frameNumber));
 
-    // Clear temporary attachments & in/out range
     setActiveDrawingSnapshot(null);
     setActiveAudioBlob(null);
     setInTime(null);
@@ -448,7 +464,7 @@ export default function Home() {
       {/* Main Screener Workspace */}
       {currentTool === 'screener' ? (
         <main className="flex-1 p-4 lg:p-6 flex flex-col gap-4 max-w-[1700px] w-full mx-auto">
-          {/* Prominent Media Source & Sync Bar */}
+          {/* Media Source & Compare & Timebase Bar */}
           {activeCut && activeProject && (
             <MediaSourceBar
               currentUrl={activeCut.videoUrl || ''}
@@ -461,14 +477,15 @@ export default function Home() {
               onUpdateStartTc={handleUpdateStartTc}
               onUpdateDropFrame={handleUpdateDropFrame}
               onUploadFile={handleUploadFile}
+              onOpenCompare={() => setIsCompareOpen(true)}
             />
           )}
 
-          {/* Core 2-Column Studio Layout */}
+          {/* 2-Column Studio Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
-            {/* Left / Center Column (Video Player + Timeline + Presets): 7 cols */}
+            {/* Left / Center Column (Player + Timeline + Presets): 7 cols */}
             <div className="lg:col-span-7 flex flex-col gap-4">
-              {/* Video Player Box with Freeze-frame Drawing Overlay */}
+              {/* Video Player Box with Freeze-frame Drawing */}
               <div className="relative">
                 {activeCut && activeProject ? (
                   <VideoPlayer
@@ -582,6 +599,17 @@ export default function Home() {
             </button>
           </div>
         </main>
+      )}
+
+      {/* Compare Modal */}
+      {activeCut && (
+        <CompareModal
+          isOpen={isCompareOpen}
+          onClose={() => setIsCompareOpen(false)}
+          currentCut={activeCut}
+          projectCuts={cuts}
+          onApplyCompare={handleApplyCompare}
+        />
       )}
 
       {/* Studio Branding Modal */}

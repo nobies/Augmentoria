@@ -14,6 +14,7 @@ import {
   Clock,
   Video,
   Tv,
+  SplitSquareVertical,
 } from 'lucide-react';
 import { Cut, Project } from '@/lib/supabase';
 import { secondsToDisplayTimecode } from '@/lib/timecode';
@@ -43,8 +44,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     ref
   ) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
+
+    // Vimeo single instance
     const vimeoContainerRef = useRef<HTMLDivElement | null>(null);
     const vimeoPlayerInstanceRef = useRef<any>(null);
+
+    // Vimeo Compare Dual instances
+    const vimeoCompareContainerARef = useRef<HTMLDivElement | null>(null);
+    const vimeoCompareContainerBRef = useRef<HTMLDivElement | null>(null);
+    const vimeoPlayerARef = useRef<any>(null);
+    const vimeoPlayerBRef = useRef<any>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -52,7 +61,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
 
-    // Standalone timer
+    // Compare view mode: 'split' | 'a' | 'b'
+    const [compareView, setCompareView] = useState<'split' | 'a' | 'b'>('split');
+
+    // Standalone clock timer
     const standaloneTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Expose control handles to parent
@@ -70,6 +82,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerInstanceRef.current.setCurrentTime(clamped).catch(() => {});
           } catch (e) {}
+        } else if (cut.provider === 'compare') {
+          try {
+            vimeoPlayerARef.current?.setCurrentTime(clamped).catch(() => {});
+            vimeoPlayerBRef.current?.setCurrentTime(clamped).catch(() => {});
+          } catch (e) {}
         }
       },
       getVideoElement: () => videoRef.current,
@@ -81,6 +98,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerInstanceRef.current.pause().catch(() => {});
           } catch (e) {}
+        } else if (cut.provider === 'compare') {
+          try {
+            vimeoPlayerARef.current?.pause().catch(() => {});
+            vimeoPlayerBRef.current?.pause().catch(() => {});
+          } catch (e) {}
         }
         setIsPlaying(false);
       },
@@ -91,6 +113,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerInstanceRef.current.play().catch(() => {});
           } catch (e) {}
+        } else if (cut.provider === 'compare') {
+          try {
+            vimeoPlayerARef.current?.play().catch(() => {});
+            vimeoPlayerBRef.current?.play().catch(() => {});
+          } catch (e) {}
         }
         setIsPlaying(true);
       },
@@ -99,7 +126,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       },
     }));
 
-    // Toggle Play/Pause
+    // Toggle Play/Pause across all modes
     const togglePlayback = () => {
       if (cut.provider === 'local' || cut.provider === 'drive') {
         if (videoRef.current) {
@@ -121,12 +148,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             setIsPlaying(true);
           }
         } catch (e) {}
+      } else if (cut.provider === 'compare') {
+        try {
+          if (isPlaying) {
+            vimeoPlayerARef.current?.pause().catch(() => {});
+            vimeoPlayerBRef.current?.pause().catch(() => {});
+            setIsPlaying(false);
+          } else {
+            vimeoPlayerARef.current?.play().catch(() => {});
+            vimeoPlayerBRef.current?.play().catch(() => {});
+            setIsPlaying(true);
+          }
+        } catch (e) {}
       } else if (cut.provider === 'standalone') {
         setIsPlaying(!isPlaying);
       }
     };
 
-    // Dynamically load & init Vimeo Player SDK on client
+    // Single Vimeo Instance Loader
     useEffect(() => {
       let isMounted = true;
 
@@ -186,7 +225,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             });
           })
           .catch(err => {
-            console.error('Failed to dynamically load Vimeo SDK:', err);
+            console.error('Vimeo SDK error:', err);
           });
 
         return () => {
@@ -199,6 +238,95 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         };
       }
     }, [cut.provider, cut.videoUrl]);
+
+    // Compare Mode: Dual Vimeo Instances Loader
+    useEffect(() => {
+      let isMounted = true;
+
+      if (
+        cut.provider === 'compare' &&
+        vimeoCompareContainerARef.current &&
+        vimeoCompareContainerBRef.current &&
+        cut.videoUrl &&
+        cut.videoUrlB
+      ) {
+        vimeoCompareContainerARef.current.innerHTML = '';
+        vimeoCompareContainerBRef.current.innerHTML = '';
+
+        import('@vimeo/player')
+          .then(module => {
+            if (!isMounted) return;
+            const Vimeo = module.default || module;
+
+            // Player A (Master)
+            const playerA = new (Vimeo as any)(vimeoCompareContainerARef.current, {
+              url: cut.videoUrl,
+              responsive: true,
+              autoplay: false,
+              controls: false,
+            });
+            vimeoPlayerARef.current = playerA;
+
+            // Player B (Slave / Sync)
+            const playerB = new (Vimeo as any)(vimeoCompareContainerBRef.current, {
+              url: cut.videoUrlB,
+              responsive: true,
+              autoplay: false,
+              controls: false,
+              muted: true, // Mute clip B by default to prevent audio clash
+            });
+            vimeoPlayerBRef.current = playerB;
+
+            playerA.on('loaded', async () => {
+              try {
+                const d = await playerA.getDuration();
+                if (isMounted) {
+                  setDuration(d);
+                  onDurationChange(d);
+                }
+              } catch (e) {}
+            });
+
+            playerA.on('play', () => {
+              if (isMounted) {
+                setIsPlaying(true);
+                playerB.play().catch(() => {});
+              }
+            });
+
+            playerA.on('pause', () => {
+              if (isMounted) {
+                setIsPlaying(false);
+                playerB.pause().catch(() => {});
+              }
+            });
+
+            playerA.on('timeupdate', (data: { seconds: number; duration: number }) => {
+              if (isMounted) {
+                setCurrentTime(data.seconds);
+                onTimeUpdate(data.seconds);
+                // Keep player B in tight lockstep
+                playerB.getCurrentTime().then((bTime: number) => {
+                  if (Math.abs(bTime - data.seconds) > 0.3) {
+                    playerB.setCurrentTime(data.seconds).catch(() => {});
+                  }
+                });
+              }
+            });
+          })
+          .catch(err => {
+            console.error('Compare Vimeo SDK error:', err);
+          });
+
+        return () => {
+          isMounted = false;
+          try {
+            vimeoPlayerARef.current?.destroy().catch(() => {});
+            vimeoPlayerBRef.current?.destroy().catch(() => {});
+          } catch (e) {}
+        };
+      }
+    }, [cut.provider, cut.videoUrl, cut.videoUrlB]);
 
     // Local HTML5 Video Events
     const handleHtml5TimeUpdate = () => {
@@ -233,6 +361,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           vimeoPlayerInstanceRef.current.pause().catch(() => {});
           setIsPlaying(false);
           vimeoPlayerInstanceRef.current.setCurrentTime(targetTime).catch(() => {});
+        } catch (e) {}
+      } else if (cut.provider === 'compare') {
+        try {
+          vimeoPlayerARef.current?.pause().catch(() => {});
+          vimeoPlayerBRef.current?.pause().catch(() => {});
+          setIsPlaying(false);
+          vimeoPlayerARef.current?.setCurrentTime(targetTime).catch(() => {});
+          vimeoPlayerBRef.current?.setCurrentTime(targetTime).catch(() => {});
         } catch (e) {}
       } else {
         setCurrentTime(targetTime);
@@ -300,9 +436,104 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     return (
       <div className="flex flex-col bg-[#0b0e16] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl relative">
-        {/* Main Video Screen Container (Fixed 16:9 Aspect Ratio) */}
+        {/* Main Video Display Area */}
         <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none">
-          {cut.provider === 'local' || cut.provider === 'drive' ? (
+          {cut.provider === 'compare' ? (
+            /* Compare Dual Screen */
+            <div className="w-full h-full relative flex items-center justify-center bg-black">
+              <div className="w-full h-full flex">
+                {/* Clip A View */}
+                <div
+                  className={`relative transition-all duration-200 ${
+                    compareView === 'split'
+                      ? 'w-1/2 border-r border-slate-700'
+                      : compareView === 'a'
+                      ? 'w-full'
+                      : 'hidden'
+                  }`}
+                >
+                  <div
+                    ref={vimeoCompareContainerARef}
+                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
+                  />
+                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-blue-600/80 text-white text-[10px] font-bold z-20">
+                    Clip A (Cut 1)
+                  </span>
+                </div>
+
+                {/* Clip B View */}
+                <div
+                  className={`relative transition-all duration-200 ${
+                    compareView === 'split'
+                      ? 'w-1/2'
+                      : compareView === 'b'
+                      ? 'w-full'
+                      : 'hidden'
+                  }`}
+                >
+                  <div
+                    ref={vimeoCompareContainerBRef}
+                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
+                  />
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-purple-600/80 text-white text-[10px] font-bold z-20">
+                    Clip B (Compare)
+                  </span>
+                </div>
+              </div>
+
+              {/* Master Overlay Click to Play/Pause */}
+              <div
+                onClick={togglePlayback}
+                className="absolute inset-0 cursor-pointer pointer-events-auto bg-transparent z-10"
+              />
+
+              {/* Compare Mode Switcher Top Center */}
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-1 rounded-xl flex items-center gap-1 z-20 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setCompareView('split');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                    compareView === 'split'
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Split 50/50
+                </button>
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setCompareView('a');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                    compareView === 'a'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Clip A
+                </button>
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setCompareView('b');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                    compareView === 'b'
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Clip B
+                </button>
+              </div>
+            </div>
+          ) : cut.provider === 'local' || cut.provider === 'drive' ? (
             videoSrc ? (
               <video
                 ref={videoRef}
@@ -324,7 +555,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           ) : cut.provider === 'vimeo' ? (
             <div className="w-full h-full relative flex items-center justify-center bg-black">
               <div ref={vimeoContainerRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
-              {/* Overlay Click-to-Play/Pause */}
               <div
                 onClick={togglePlayback}
                 className="absolute inset-0 cursor-pointer pointer-events-auto bg-transparent z-10"
@@ -340,7 +570,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               />
             </div>
           ) : (
-            /* Standalone SMPTE Clock Screen */
+            /* Standalone Clock */
             <div
               onClick={togglePlayback}
               className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#0e131d] to-[#080b11] p-8 cursor-pointer select-none"
@@ -379,7 +609,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </div>
         </div>
 
-        {/* Studio Transport Control Bar */}
+        {/* Transport Control Bar */}
         <div className="h-14 bg-[#0e131f] border-t border-[#1d2538] px-4 flex items-center justify-between text-slate-300 select-none">
           {/* Left: Frame Steps & Play/Pause */}
           <div className="flex items-center gap-2">

@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
-import { PenTool, Image as ImageIcon, Mic } from 'lucide-react';
+import { PenTool, Image as ImageIcon, Mic, Palette } from 'lucide-react';
 
 interface MediaToolsStripProps {
   onStartDrawing: () => void;
   onStartVoiceRecording: () => void;
+  onOpenColorGrading: () => void;
   onAttachImage: (file: File) => void;
   hasActiveDrawing: boolean;
   hasActiveVoice: boolean;
@@ -14,6 +15,7 @@ interface MediaToolsStripProps {
 export const MediaToolsStrip: React.FC<MediaToolsStripProps> = ({
   onStartDrawing,
   onStartVoiceRecording,
+  onOpenColorGrading,
   onAttachImage,
   hasActiveDrawing,
   hasActiveVoice,
@@ -25,7 +27,7 @@ export const MediaToolsStrip: React.FC<MediaToolsStripProps> = ({
 
   return (
     <div className="flex lg:flex-col items-center justify-center gap-2 bg-[#111724] border border-[#20293d] p-2 rounded-2xl shadow-xl shrink-0">
-      {/* Freeze Frame Drawing */}
+      {/* 1. Freeze Frame Drawing */}
       <button
         type="button"
         onClick={onStartDrawing}
@@ -39,7 +41,17 @@ export const MediaToolsStrip: React.FC<MediaToolsStripProps> = ({
         <PenTool className="w-4 h-4" />
       </button>
 
-      {/* Watermark / Image Upload */}
+      {/* 2. Color Grading & Film Look */}
+      <button
+        type="button"
+        onClick={onOpenColorGrading}
+        className="p-2.5 rounded-xl bg-[#151b29] hover:bg-[#1a2336] border border-[#222c42] hover:border-orange-500/40 text-slate-300 hover:text-orange-400 transition active:scale-95"
+        title="Color Grading & Film Looks (Exposure, Contrast, Saturation, Temp, LUTs)"
+      >
+        <Palette className="w-4 h-4" />
+      </button>
+
+      {/* 3. Watermark / Image Upload */}
       <label className="cursor-pointer">
         <div
           className="p-2.5 rounded-xl bg-[#151b29] hover:bg-[#1a2336] border border-[#222c42] hover:border-blue-500/40 text-slate-300 hover:text-blue-400 transition active:scale-95"
@@ -50,7 +62,7 @@ export const MediaToolsStrip: React.FC<MediaToolsStripProps> = ({
         <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
       </label>
 
-      {/* Voice Comment Recorder */}
+      {/* 4. Voice Comment Recorder */}
       <button
         type="button"
         onClick={onStartVoiceRecording}

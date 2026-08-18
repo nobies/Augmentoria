@@ -140,7 +140,7 @@ export function generateTextSummary(project: Project, cut: Cut, notes: ReviewNot
 }
 
 // ----------------------------------------------------
-// 6. BRANDED VISUAL PDF REPORT (WITH FRAME STILLS & MARKUPS)
+// 6. 1:1 DROPMEDIA REPLICA BRANDED PDF REPORT (Exact Screenshot Match)
 // ----------------------------------------------------
 export async function generatePDFReport(
   project: Project,
@@ -154,115 +154,148 @@ export async function generatePDFReport(
     format: 'a4',
   });
 
-  // Dark Header Banner
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, 210, 42, 'F');
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const marginX = 14;
+  const contentWidth = pageWidth - marginX * 2;
 
-  // Studio / Project Info
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text(branding.name || 'Studio Review Report', 15, 16);
+  // Header function
+  const renderHeader = (pageNumber: number) => {
+    // Title (Top Left)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${project.name} - ${cut.name}`, marginX, 16);
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(148, 163, 184);
-  doc.text(branding.tagline || 'Post-Production Review & Quality Report', 15, 23);
+    // Date (Top Right)
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184);
+    const dateStr = new Date().toISOString().split('T')[0];
+    doc.text(dateStr, pageWidth - marginX, 16, { align: 'right' });
 
-  doc.setFontSize(11);
-  doc.setTextColor(255, 255, 255);
-  doc.text(`Project: ${project.name}`, 15, 34);
-  doc.text(`Cut: ${cut.name} (${project.fps} fps)`, 120, 34);
+    // Subtitle Line
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      `${notes.length} notes · ${project.fps} fps · start ${project.startTimecode || '01:00:00:00'}`,
+      marginX,
+      21.5
+    );
 
-  let yPos = 50;
-  const pageHeight = 275;
+    // Top Divider Line
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, 25, pageWidth - marginX, 25);
+  };
+
+  renderHeader(1);
+
+  let yPos = 30;
+  const rowHeight = 31; // height per note item row
 
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
-    const cardHeight = note.stillImageUrl ? 38 : 26;
 
     // Check if new page needed
-    if (yPos + cardHeight > pageHeight) {
+    if (yPos + rowHeight > pageHeight - 18) {
       doc.addPage();
-      yPos = 20;
+      renderHeader(doc.getNumberOfPages());
+      yPos = 30;
     }
 
-    // Card background box
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(12, yPos, 186, cardHeight, 2, 2, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(12, yPos, 186, cardHeight, 2, 2, 'S');
+    const imgWidth = 46;
+    const imgHeight = 26; // 16:9 ratio
 
-    // Thumbnail still on Left if available
-    let textLeftMargin = 16;
+    // 1. Frame Thumbnail (Left)
     if (note.stillImageUrl) {
       try {
         let imgData = note.stillImageUrl;
         if (!imgData.startsWith('data:image')) {
           const res = await fetch(imgData);
           const blob = await res.blob();
-          imgData = await new Promise((resolve) => {
+          imgData = await new Promise(resolve => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
             reader.readAsDataURL(blob);
           });
         }
-        doc.addImage(imgData, 'JPEG', 16, yPos + 4, 46, 30);
-        textLeftMargin = 68;
+        doc.addImage(imgData, 'JPEG', marginX, yPos + 1, imgWidth, imgHeight);
       } catch (e) {
-        console.error('PDF image error:', e);
+        // Fallback gray box
+        doc.setFillColor(241, 245, 249);
+        doc.rect(marginX, yPos + 1, imgWidth, imgHeight, 'F');
       }
+    } else {
+      doc.setFillColor(241, 245, 249);
+      doc.rect(marginX, yPos + 1, imgWidth, imgHeight, 'F');
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text('No Frame Still', marginX + 12, yPos + 14);
     }
 
-    // Category tag pill
-    const catColor =
-      note.category === 'editorial'
-        ? [59, 130, 246]
-        : note.category === 'vfx'
-        ? [168, 85, 247]
-        : note.category === 'color'
-        ? [234, 88, 12]
-        : [16, 185, 129];
-    doc.setFillColor(catColor[0], catColor[1], catColor[2]);
-    doc.roundedRect(textLeftMargin, yPos + 4, 20, 5.5, 1, 1, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'bold');
-    doc.text(note.category.toUpperCase(), textLeftMargin + 2, yPos + 8);
+    // 2. Right Text Column
+    const textStartX = marginX + imgWidth + 8;
 
-    // Timecode & Preset Title
+    // Timecode (Bold)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    const tcTitle = `${note.timecode}${note.timecodeOut ? ` -> ${note.timecodeOut}` : ''}  -  ${note.presetLabel}`;
-    doc.text(tcTitle, textLeftMargin + 24, yPos + 8.5);
+    doc.text(note.timecode, textStartX, yPos + 7);
 
-    // Comments
-    doc.setTextColor(71, 85, 105);
-    doc.setFontSize(9);
+    // Colored Category Dot & Category Title
+    const catDotColor =
+      note.category === 'editorial'
+        ? [239, 68, 68]
+        : note.category === 'vfx'
+        ? [59, 130, 246]
+        : note.category === 'color'
+        ? [245, 158, 11]
+        : [16, 185, 129];
+
+    doc.setFillColor(catDotColor[0], catDotColor[1], catDotColor[2]);
+    doc.circle(textStartX + 26, yPos + 6.2, 1.2, 'F');
+
     doc.setFont('helvetica', 'normal');
-    const availableWidth = 190 - textLeftMargin;
-    const splitText = doc.splitTextToSize(note.text || 'No comment provided', availableWidth);
-    doc.text(splitText, textLeftMargin, yPos + 17);
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    const catName = note.category ? note.category.charAt(0).toUpperCase() + note.category.slice(1) : 'Editorial';
+    doc.text(catName, textStartX + 29, yPos + 7);
 
-    // Voice Note indicator badge
-    if (note.audioBlobUrl) {
-      doc.setTextColor(239, 68, 68);
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
-      doc.text('[Voice Clip Recorded]', textLeftMargin, yPos + cardHeight - 3);
-    }
+    // Comment Text / Preset Label
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(51, 65, 85);
+    const mainText = note.text ? `${note.presetLabel}: ${note.text}` : note.presetLabel;
+    const splitText = doc.splitTextToSize(mainText, contentWidth - imgWidth - 10);
+    doc.text(splitText, textStartX, yPos + 14);
 
-    yPos += cardHeight + 4;
+    // 3. Subtle bottom row divider line
+    doc.setDrawColor(241, 245, 249);
+    doc.setLineWidth(0.2);
+    doc.line(marginX, yPos + rowHeight - 2, pageWidth - marginX, yPos + rowHeight - 2);
+
+    yPos += rowHeight;
   }
 
-  // Footer Page numbers
+  // Footer for all pages
   const totalPages = doc.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
-    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
-    doc.text(`Generated by ${branding.name || 'DropMedia Screener'} • Page ${p} of ${totalPages}`, 15, 290);
+
+    // Left: Page 1 of 1
+    doc.text(`Page ${p} of ${totalPages}`, marginX, 290);
+
+    // Center: Project - Cut
+    doc.text(`${project.name} - ${cut.name}`, pageWidth / 2, 290, { align: 'center' });
+
+    // Right: Review notes · made with dropmedia.io (or Studio Name)
+    doc.text(`Review notes · made with ${branding.name || 'dropmedia.io'}`, pageWidth - marginX, 290, {
+      align: 'right',
+    });
   }
 
   return doc.output('blob');

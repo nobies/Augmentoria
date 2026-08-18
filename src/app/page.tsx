@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { VideoPlayer, VideoPlayerHandle } from '@/components/VideoPlayer';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
-import { PresetKeys } from '@/components/PresetKeys';
+import { PresetKeys, PRESET_CATEGORIES, CategoryPreset } from '@/components/PresetKeys';
 import { NotesList } from '@/components/NotesList';
 import { AnnotationCanvas } from '@/components/AnnotationCanvas';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
@@ -14,6 +14,9 @@ import { ExportModal } from '@/components/ExportModal';
 import { CompareModal } from '@/components/CompareModal';
 import { AddMediaModal } from '@/components/AddMediaModal';
 import { MediaToolsStrip } from '@/components/MediaToolsStrip';
+import { ShareModal } from '@/components/ShareModal';
+import { NotekeysModal } from '@/components/NotekeysModal';
+import { ColorGradingPanel, ColorGradeSettings, DEFAULT_GRADE } from '@/components/ColorGradingPanel';
 
 import {
   Project,
@@ -68,20 +71,30 @@ export default function Home() {
   const [inTime, setInTime] = useState<number | null>(null);
   const [outTime, setOutTime] = useState<number | null>(null);
 
+  // Notekeys Categories
+  const [categories, setCategories] = useState<CategoryPreset[]>(PRESET_CATEGORIES);
+
+  // Color Grading state
+  const [activeGrade, setActiveGrade] = useState<ColorGradeSettings>(DEFAULT_GRADE);
+  const [livePreviewGrade, setLivePreviewGrade] = useState<ColorGradeSettings | null>(null);
+
   // Notes & Selected Note
   const [notes, setNotes] = useState<ReviewNote[]>([]);
   const [selectedNote, setSelectedNote] = useState<ReviewNote | null>(null);
 
-  // Modals & Panels
+  // Modals
   const [isBrandingOpen, setIsBrandingOpen] = useState(false);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isAddMediaOpen, setIsAddMediaOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isNotekeysOpen, setIsNotekeysOpen] = useState(false);
+  const [isColorGradingOpen, setIsColorGradingOpen] = useState(false);
   const [isDrawingOpen, setIsDrawingOpen] = useState(false);
   const [isVoiceRecordingOpen, setIsVoiceRecordingOpen] = useState(false);
 
-  // Active Pending Attachments
+  // Attachments
   const [activeDrawingSnapshot, setActiveDrawingSnapshot] = useState<string | null>(null);
   const [activeDrawingVector, setActiveDrawingVector] = useState<string | null>(null);
   const [activeAudioBlob, setActiveAudioBlob] = useState<Blob | null>(null);
@@ -335,6 +348,19 @@ export default function Home() {
     setOutTime(null);
   };
 
+  // Apply Color Grade
+  const handleApplyColorGrade = (grade: ColorGradeSettings, applyScope: 'frame' | 'range' | 'master') => {
+    setActiveGrade(grade);
+    setLivePreviewGrade(null);
+
+    // Save as a color correction review note
+    handleAddNote({
+      category: 'color',
+      presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Correction',
+      text: `Exposure: ${grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%, Contrast: ${grade.contrast}%, Sat: ${grade.saturation}%, Temp: ${grade.temperature}K`,
+    });
+  };
+
   // Toggle Resolved
   const handleToggleResolved = async (noteId: string) => {
     const target = notes.find(n => n.id === noteId);
@@ -451,7 +477,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#090c13] text-slate-100 select-none">
-      {/* Top Navigation Header */}
+      {/* Top 7 Action Icons Header */}
       <Header
         currentTool={currentTool}
         onSelectTool={setCurrentTool}
@@ -461,11 +487,15 @@ export default function Home() {
         onOpenProjects={() => setIsProjectsOpen(true)}
         onOpenBranding={() => setIsBrandingOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
+        onOpenShare={() => setIsShareOpen(true)}
+        onOpenNotekeys={() => setIsNotekeysOpen(true)}
+        onOpenColorGrading={() => setIsColorGradingOpen(true)}
+        onOpenAddMedia={() => setIsAddMediaOpen(true)}
       />
 
       {/* Main Studio Hub (Full 100vh Fit, 0 Page Scroll) */}
       <main className="flex-1 p-2.5 flex gap-2.5 overflow-hidden max-w-[1920px] w-full mx-auto min-h-0">
-        {/* Left / Center: Video Player + Timeline + Preset Console (Flexible) */}
+        {/* Left / Center: Video Player + Timeline + Preset Console */}
         <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0">
           {/* Main Video Box with Integrated Header */}
           <div className="flex-1 relative flex flex-col min-h-0">
@@ -477,6 +507,7 @@ export default function Home() {
                 localVideoUrl={localVideoUrl}
                 notes={notes}
                 selectedNote={selectedNote}
+                liveGrade={livePreviewGrade || activeGrade}
                 onTimeUpdate={setCurrentTime}
                 onDurationChange={setDuration}
                 onMarkIn={handleMarkIn}
@@ -526,13 +557,15 @@ export default function Home() {
             />
           )}
 
-          {/* Compact Tactile Preset Console */}
+          {/* Tactile Preset Console with Left Colored Accent & Add Key */}
           <PresetKeys
             currentTc={currentTc}
             inTc={inTc}
             outTc={outTc}
+            categories={categories}
             onClearRange={handleClearRange}
             onAddNote={handleAddNote}
+            onOpenNotekeys={() => setIsNotekeysOpen(true)}
             activeDrawingSnapshot={activeDrawingSnapshot}
             activeAudioBlob={activeAudioBlob}
             onClearDrawingSnapshot={() => {
@@ -543,7 +576,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Middle Quick Tools Strip (Draw, Watermark, Voice) */}
+        {/* Middle Quick Tools Strip (Draw, Color Grade, Watermark, Voice) */}
         <MediaToolsStrip
           onStartDrawing={() => {
             videoPlayerRef.current?.pause();
@@ -553,6 +586,7 @@ export default function Home() {
             videoPlayerRef.current?.pause();
             setIsVoiceRecordingOpen(true);
           }}
+          onOpenColorGrading={() => setIsColorGradingOpen(true)}
           onAttachImage={file => {
             const reader = new FileReader();
             reader.onload = () => {
@@ -564,7 +598,7 @@ export default function Home() {
           hasActiveVoice={Boolean(activeAudioBlob)}
         />
 
-        {/* Right: Review Notes Log (Compact 320px width, Internal Scroll) */}
+        {/* Right: Review Notes Log */}
         <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
           <NotesList
             notes={notes}
@@ -576,6 +610,36 @@ export default function Home() {
           />
         </div>
       </main>
+
+      {/* Color Grading Panel */}
+      <ColorGradingPanel
+        isOpen={isColorGradingOpen}
+        onClose={() => {
+          setIsColorGradingOpen(false);
+          setLivePreviewGrade(null);
+        }}
+        currentGrade={activeGrade}
+        onApplyGrade={handleApplyColorGrade}
+        onLivePreviewChange={setLivePreviewGrade}
+      />
+
+      {/* Notekeys Settings Modal */}
+      <NotekeysModal
+        isOpen={isNotekeysOpen}
+        onClose={() => setIsNotekeysOpen(false)}
+        categories={categories}
+        onSaveCategories={setCategories}
+      />
+
+      {/* Share Modal */}
+      {activeProject && activeCut && (
+        <ShareModal
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          project={activeProject}
+          cut={activeCut}
+        />
+      )}
 
       {/* Voice Recorder Overlay Modal */}
       {isVoiceRecordingOpen && (

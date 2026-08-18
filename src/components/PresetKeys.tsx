@@ -7,13 +7,14 @@ import {
   Palette,
   Volume2,
   Send,
+  Plus,
 } from 'lucide-react';
 
 export interface CategoryPreset {
   id: string;
   name: string;
   color: 'editorial' | 'vfx' | 'color' | 'sound';
-  icon: any;
+  icon?: any;
   keys: string[];
 }
 
@@ -104,6 +105,7 @@ interface PresetKeysProps {
   currentTc: string;
   inTc: string | null;
   outTc: string | null;
+  categories?: CategoryPreset[];
   onClearRange: () => void;
   onAddNote: (noteData: {
     category: 'editorial' | 'vfx' | 'color' | 'sound' | 'general';
@@ -113,6 +115,7 @@ interface PresetKeysProps {
     audioBlob?: Blob;
     drawingData?: string;
   }) => void;
+  onOpenNotekeys?: () => void;
   activeDrawingSnapshot: string | null;
   activeAudioBlob: Blob | null;
   onClearDrawingSnapshot: () => void;
@@ -123,23 +126,25 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
   currentTc,
   inTc,
   outTc,
+  categories = PRESET_CATEGORIES,
   onClearRange,
   onAddNote,
+  onOpenNotekeys,
   activeDrawingSnapshot,
   activeAudioBlob,
   onClearDrawingSnapshot,
   onClearAudioBlob,
 }) => {
-  const [activeCategory, setActiveCategory] = useState<'editorial' | 'vfx' | 'color' | 'sound'>('editorial');
+  const [activeCategory, setActiveCategory] = useState<string>('editorial');
   const [customText, setCustomText] = useState('');
   const [selectedKey, setSelectedKey] = useState('Flag');
 
-  const currentCategoryObj = PRESET_CATEGORIES.find(c => c.id === activeCategory) || PRESET_CATEGORIES[0];
+  const currentCategoryObj = categories.find(c => c.id === activeCategory) || categories[0] || PRESET_CATEGORIES[0];
 
   const handleKeyClick = (keyLabel: string) => {
     setSelectedKey(keyLabel);
     onAddNote({
-      category: activeCategory,
+      category: activeCategory as any,
       presetLabel: keyLabel,
       text: customText.trim(),
       stillImageUrl: activeDrawingSnapshot || undefined,
@@ -151,7 +156,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onAddNote({
-      category: activeCategory,
+      category: activeCategory as any,
       presetLabel: selectedKey || 'Note',
       text: customText.trim(),
       stillImageUrl: activeDrawingSnapshot || undefined,
@@ -160,36 +165,40 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
     setCustomText('');
   };
 
+  const accentColor =
+    currentCategoryObj.color === 'editorial'
+      ? '#ef4444'
+      : currentCategoryObj.color === 'vfx'
+      ? '#3b82f6'
+      : currentCategoryObj.color === 'color'
+      ? '#f59e0b'
+      : '#10b981';
+
   return (
-    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-3 flex flex-col gap-2.5 shadow-2xl shrink-0">
-      {/* Category Tabs & Active Range/TC */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        {/* Category Tabs */}
-        <div className="flex items-center gap-1 bg-[#0b0f17] p-0.5 rounded-lg border border-[#1e273b]">
-          {PRESET_CATEGORIES.map(cat => {
-            const CatIcon = cat.icon;
+    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-2.5 flex flex-col gap-2 shadow-2xl shrink-0">
+      {/* Category Tabs (Exact Screenshot 2 Underline Style) */}
+      <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[#1d2538] pb-1.5">
+        <div className="flex items-center gap-4">
+          {categories.map(cat => {
             const isSelected = activeCategory === cat.id;
             return (
               <button
                 key={cat.id}
                 onClick={() => {
-                  setActiveCategory(cat.id as any);
-                  setSelectedKey('Flag');
+                  setActiveCategory(cat.id);
+                  setSelectedKey(cat.keys[0] || 'Flag');
                 }}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
-                  isSelected
-                    ? cat.id === 'editorial'
-                      ? 'bg-blue-600 text-white shadow'
-                      : cat.id === 'vfx'
-                      ? 'bg-purple-600 text-white shadow'
-                      : cat.id === 'color'
-                      ? 'bg-orange-600 text-white shadow'
-                      : 'bg-emerald-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white hover:bg-[#151c2c]'
+                className={`text-xs font-bold transition relative pb-1 ${
+                  isSelected ? 'text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <CatIcon className="w-3 h-3" />
                 <span>{cat.name}</span>
+                {isSelected && (
+                  <span
+                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                )}
               </button>
             );
           })}
@@ -201,22 +210,18 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
             <div className="flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
               <span>IN: {inTc}</span>
               {outTc && <span>→ OUT: {outTc}</span>}
-              <button
-                onClick={onClearRange}
-                className="ml-1 text-slate-400 hover:text-white"
-                title="Clear In/Out range"
-              >
+              <button onClick={onClearRange} className="ml-1 text-slate-400 hover:text-white">
                 ×
               </button>
             </div>
           )}
-          <div className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded bg-[#161e2e] border border-[#26334d] text-blue-400">
+          <div className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-[#161e2e] border border-[#26334d] text-blue-400">
             {currentTc}
           </div>
         </div>
       </div>
 
-      {/* Preset Action Keys (Compact 36px Height Buttons) */}
+      {/* Preset Action Keys with Left Vertical Accent Bar (Screenshot 2) */}
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
         {currentCategoryObj.keys.map(k => {
           const isSelected = selectedKey === k;
@@ -224,10 +229,11 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
             <button
               key={k}
               onClick={() => handleKeyClick(k)}
-              className={`h-9 rounded-lg border px-2 text-center text-[11px] font-bold transition active:scale-95 flex items-center justify-center ${
+              style={{ borderLeftColor: accentColor }}
+              className={`h-9 rounded-lg border border-l-[3.5px] px-2 text-center text-[11px] font-bold transition active:scale-95 flex items-center justify-center relative ${
                 isSelected
-                  ? 'bg-blue-600/25 border-blue-400 text-white shadow'
-                  : 'bg-[#141b29] border-[#222c42] text-slate-200 hover:bg-[#1c2438] hover:border-slate-500 hover:text-white'
+                  ? 'bg-[#1e273a] border-slate-500 text-white shadow'
+                  : 'bg-[#141b29] border-[#222c42] text-slate-200 hover:bg-[#1a2336] hover:text-white'
               }`}
               title={`Stamp [${k}] at ${currentTc}`}
             >
@@ -235,33 +241,43 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
             </button>
           );
         })}
+
+        {/* + Add key Dashed Button */}
+        {onOpenNotekeys && (
+          <button
+            type="button"
+            onClick={onOpenNotekeys}
+            className="h-9 rounded-lg border border-dashed border-[#2b3952] hover:border-blue-500 text-[11px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1 transition"
+          >
+            <Plus className="w-3 h-3" />
+            <span>Add key</span>
+          </button>
+        )}
       </div>
 
       {/* Quick Custom Comment Form */}
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 pt-1">
-        {/* Drawing Snapshot Badge */}
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 pt-0.5">
         {activeDrawingSnapshot && (
           <div className="relative group shrink-0">
             <img
               src={activeDrawingSnapshot}
-              alt="Attached Drawing"
-              className="w-8 h-8 object-cover rounded-lg border border-amber-500 shadow"
+              alt="Snapshot"
+              className="w-7 h-7 object-cover rounded border border-amber-500 shadow"
             />
             <button
               type="button"
               onClick={onClearDrawingSnapshot}
-              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white text-[9px] flex items-center justify-center"
+              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white text-[8px] flex items-center justify-center"
             >
               ×
             </button>
           </div>
         )}
 
-        {/* Voice Note Badge */}
         {activeAudioBlob && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-bold shrink-0">
-            <span>Voice Clip</span>
-            <button type="button" onClick={onClearAudioBlob} className="ml-1 text-slate-400 hover:text-white">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-bold shrink-0">
+            <span>Voice</span>
+            <button type="button" onClick={onClearAudioBlob} className="ml-0.5 text-slate-400 hover:text-white">
               ×
             </button>
           </div>
@@ -271,7 +287,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           type="text"
           value={customText}
           onChange={e => setCustomText(e.target.value)}
-          placeholder={`Type custom comment for timestamp ${currentTc}...`}
+          placeholder={`Add custom comment at ${currentTc}...`}
           className="flex-1 px-3 py-1.5 rounded-xl bg-[#090d14] border border-[#222c42] text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
         />
 

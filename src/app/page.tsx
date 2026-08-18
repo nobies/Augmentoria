@@ -497,6 +497,7 @@ export default function Home() {
               <AnnotationCanvas
                 isOpen={isDrawingOpen}
                 videoElement={videoPlayerRef.current?.getVideoElement() || null}
+                posterDataUrl={videoPlayerRef.current?.getPosterDataUrl() || null}
                 onSaveDrawing={(drawingDataUrl, snapshotDataUrl) => {
                   setActiveDrawingSnapshot(snapshotDataUrl);
                   setActiveDrawingVector(drawingDataUrl);
@@ -542,7 +543,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Middle Quick Tools Strip (Draw, Watermark, Voice, In/Out next to video) */}
+        {/* Middle Quick Tools Strip (Draw, Watermark, Voice) */}
         <MediaToolsStrip
           onStartDrawing={() => {
             videoPlayerRef.current?.pause();
@@ -559,8 +560,6 @@ export default function Home() {
             };
             reader.readAsDataURL(file);
           }}
-          onMarkIn={handleMarkIn}
-          onMarkOut={handleMarkOut}
           hasActiveDrawing={Boolean(activeDrawingSnapshot)}
           hasActiveVoice={Boolean(activeAudioBlob)}
         />

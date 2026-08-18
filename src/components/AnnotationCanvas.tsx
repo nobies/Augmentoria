@@ -10,15 +10,14 @@ import {
   Trash2,
   Check,
   X,
-  Image as ImageIcon,
   Upload,
-  Sliders,
   Move,
 } from 'lucide-react';
 
 interface AnnotationCanvasProps {
   isOpen: boolean;
   videoElement: HTMLVideoElement | null;
+  posterDataUrl?: string | null;
   onSaveDrawing: (drawingDataUrl: string, snapshotDataUrl: string) => void;
   onCancel: () => void;
 }
@@ -37,6 +36,7 @@ interface PlacedImage {
 export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   isOpen,
   videoElement,
+  posterDataUrl,
   onSaveDrawing,
   onCancel,
 }) => {
@@ -142,7 +142,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Convert mouse coords to 1920x1080 canvas coords
   const getCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -158,7 +157,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const startDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const coords = getCoords(e);
 
-    // If clicking on placed image in image tool mode
     if (placedImage) {
       const insideImage =
         coords.x >= placedImage.x &&
@@ -274,26 +272,24 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const drawingCanvas = canvasRef.current;
     if (!drawingCanvas) return;
 
-    // Create a composite drawing canvas (lines + placed watermark with opacity)
+    // 1. Vector Drawing DataURL
     const finalDrawingCanvas = document.createElement('canvas');
     finalDrawingCanvas.width = CANVAS_WIDTH;
     finalDrawingCanvas.height = CANVAS_HEIGHT;
     const fCtx = finalDrawingCanvas.getContext('2d');
 
     if (fCtx) {
-      // 1. Draw placed image with opacity
       if (placedImage) {
         fCtx.globalAlpha = imageOpacity;
         fCtx.drawImage(placedImage.img, placedImage.x, placedImage.y, placedImage.w, placedImage.h);
         fCtx.globalAlpha = 1.0;
       }
-      // 2. Draw user pen/arrow annotations
       fCtx.drawImage(drawingCanvas, 0, 0);
     }
 
     const drawingDataUrl = finalDrawingCanvas.toDataURL('image/png');
 
-    // Create complete frame snapshot (Video Frame + Drawing/Watermark)
+    // 2. Full Frame Snapshot DataURL (Video Frame + Drawing)
     const compositeCanvas = document.createElement('canvas');
     compositeCanvas.width = 640;
     compositeCanvas.height = 360;
@@ -302,15 +298,26 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     if (cCtx) {
       if (videoElement && videoElement.videoWidth > 0) {
         cCtx.drawImage(videoElement, 0, 0, 640, 360);
+        cCtx.drawImage(finalDrawingCanvas, 0, 0, 640, 360);
+        const snapshotDataUrl = compositeCanvas.toDataURL('image/jpeg', 0.88);
+        onSaveDrawing(drawingDataUrl, snapshotDataUrl);
+      } else if (posterDataUrl) {
+        const bgImg = new Image();
+        bgImg.onload = () => {
+          cCtx.drawImage(bgImg, 0, 0, 640, 360);
+          cCtx.drawImage(finalDrawingCanvas, 0, 0, 640, 360);
+          const snapshotDataUrl = compositeCanvas.toDataURL('image/jpeg', 0.88);
+          onSaveDrawing(drawingDataUrl, snapshotDataUrl);
+        };
+        bgImg.src = posterDataUrl;
       } else {
         cCtx.fillStyle = '#0b0f17';
         cCtx.fillRect(0, 0, 640, 360);
+        cCtx.drawImage(finalDrawingCanvas, 0, 0, 640, 360);
+        const snapshotDataUrl = compositeCanvas.toDataURL('image/jpeg', 0.88);
+        onSaveDrawing(drawingDataUrl, snapshotDataUrl);
       }
-      cCtx.drawImage(finalDrawingCanvas, 0, 0, 640, 360);
     }
-
-    const snapshotDataUrl = compositeCanvas.toDataURL('image/jpeg', 0.85);
-    onSaveDrawing(drawingDataUrl, snapshotDataUrl);
   };
 
   return (
@@ -318,21 +325,28 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       ref={containerRef}
       className="absolute inset-0 z-30 flex flex-col bg-black/60 backdrop-blur-[1px] select-none"
     >
+      {/* Background Frame Poster (for Vimeo/External) */}
+      {posterDataUrl && !videoElement && (
+        <div className="absolute inset-0 pointer-events-none opacity-40 flex items-center justify-center">
+          <img src={posterDataUrl} alt="Background Still" className="w-full h-full object-contain" />
+        </div>
+      )}
+
       {/* Top Floating Toolbar */}
-      <div className="h-12 bg-[#0c1018]/95 border-b border-[#232d44] px-4 flex items-center justify-between text-white flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-            <PenTool className="w-3.5 h-3.5" />
-            Freeze Frame Markup & Watermark
+      <div className="h-11 bg-[#0c1018]/95 border-b border-[#232d44] px-3 flex items-center justify-between text-white flex-wrap gap-2 z-30">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+            <PenTool className="w-3 h-3" />
+            Markup & Watermark
           </span>
 
           {/* Tools */}
           <div className="flex items-center bg-[#141b29] rounded-lg p-0.5 border border-[#232d44]">
             {[
               { id: 'arrow', icon: MoveRight, title: 'Arrow' },
-              { id: 'rect', icon: Square, title: 'Rectangle Box' },
+              { id: 'rect', icon: Square, title: 'Box' },
               { id: 'circle', icon: Circle, title: 'Circle' },
-              { id: 'pen', icon: PenTool, title: 'Freehand Pen' },
+              { id: 'pen', icon: PenTool, title: 'Pen' },
             ].map(t => {
               const ToolIcon = t.icon;
               const isSelected = activeTool === t.id;
@@ -341,24 +355,24 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
                   key={t.id}
                   onClick={() => setActiveTool(t.id as any)}
                   title={t.title}
-                  className={`p-1.5 rounded-md transition ${
+                  className={`p-1 rounded transition ${
                     isSelected ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <ToolIcon className="w-4 h-4" />
+                  <ToolIcon className="w-3.5 h-3.5" />
                 </button>
               );
             })}
           </div>
 
           {/* Colors */}
-          <div className="flex items-center gap-1.5 ml-1">
+          <div className="flex items-center gap-1 ml-1">
             {['#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#ec4899', '#ffffff'].map(c => (
               <button
                 key={c}
                 onClick={() => setColor(c)}
-                className={`w-5 h-5 rounded-full border-2 transition ${
-                  color === c ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-80 hover:opacity-100'
+                className={`w-4 h-4 rounded-full border transition ${
+                  color === c ? 'border-white scale-110 shadow' : 'border-transparent opacity-80'
                 }`}
                 style={{ backgroundColor: c }}
               />
@@ -367,16 +381,16 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
 
           {/* Upload Watermark Button */}
           <label className="cursor-pointer ml-1">
-            <div className="px-2.5 py-1 rounded-lg bg-[#1a2336] hover:bg-[#25324d] border border-[#2e3b57] text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 transition">
-              <Upload className="w-3 h-3 text-blue-400" />
-              <span>{placedImage ? 'Replace Watermark' : 'Add Watermark / Image'}</span>
+            <div className="px-2 py-0.5 rounded-lg bg-[#1a2336] hover:bg-[#25324d] border border-[#2e3b57] text-[10px] font-semibold text-slate-200 flex items-center gap-1 transition">
+              <Upload className="w-2.5 h-2.5 text-blue-400" />
+              <span>{placedImage ? 'Replace Watermark' : 'Add Watermark'}</span>
             </div>
             <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
           </label>
 
-          {/* Watermark Opacity & Size Controls */}
+          {/* Watermark Opacity Controls */}
           {placedImage && (
-            <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#141b29] border border-[#232d44] text-[11px]">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#141b29] border border-[#232d44] text-[10px]">
               <span className="text-slate-400 font-semibold">Opacity:</span>
               <input
                 type="range"
@@ -387,62 +401,50 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
                 onChange={e => {
                   const op = parseFloat(e.target.value);
                   setImageOpacity(op);
-                  if (placedImage) {
-                    setPlacedImage({ ...placedImage, opacity: op });
-                  }
+                  if (placedImage) setPlacedImage({ ...placedImage, opacity: op });
                 }}
-                className="w-20 cursor-pointer accent-blue-500"
+                className="w-16 cursor-pointer accent-blue-500"
               />
               <span className="font-mono text-blue-400">{Math.round(imageOpacity * 100)}%</span>
-
-              <button
-                onClick={() => setPlacedImage(null)}
-                className="ml-1 text-slate-500 hover:text-red-400"
-                title="Remove Watermark"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
+              <button onClick={() => setPlacedImage(null)} className="ml-0.5 text-slate-500 hover:text-red-400">
+                <Trash2 className="w-3 h-3" />
               </button>
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={handleUndo}
             disabled={history.length <= 1}
             title="Undo"
-            className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] text-slate-300 disabled:opacity-30 transition"
+            className="p-1 rounded-lg bg-[#141b29] text-slate-300 disabled:opacity-30"
           >
-            <Undo2 className="w-4 h-4" />
+            <Undo2 className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={handleClear}
-            title="Clear canvas"
-            className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] text-slate-300 transition"
-          >
-            <Trash2 className="w-4 h-4 text-red-400" />
+          <button onClick={handleClear} title="Clear" className="p-1 rounded-lg bg-[#141b29] text-slate-300">
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
           </button>
 
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-[#1a2233] transition"
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-300 hover:bg-[#1a2233]"
           >
             Cancel
           </button>
           <button
             onClick={handleFinish}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/30 transition active:scale-95"
+            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow"
           >
-            <Check className="w-3.5 h-3.5" />
-            <span>Apply To Note</span>
+            <Check className="w-3 h-3" />
+            <span>Apply Note</span>
           </button>
         </div>
       </div>
 
-      {/* Canvas Area with Draggable Watermark */}
+      {/* Canvas Area */}
       <div className="flex-1 w-full h-full relative cursor-crosshair overflow-hidden flex items-center justify-center">
-        {/* Render Placed Watermark Image */}
         {placedImage && (
           <div
             style={{
@@ -453,11 +455,11 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
               height: `${(placedImage.h / CANVAS_HEIGHT) * 100}%`,
               opacity: imageOpacity,
             }}
-            className="border-2 border-dashed border-blue-400 cursor-move pointer-events-none group z-10"
+            className="border border-dashed border-blue-400 cursor-move pointer-events-none group z-10"
           >
-            <img src={placedImage.img.src} alt="Placed Watermark" className="w-full h-full object-contain" />
-            <div className="absolute top-1 right-1 bg-black/70 text-white text-[9px] px-1 rounded flex items-center gap-0.5">
-              <Move className="w-2.5 h-2.5" /> Drag
+            <img src={placedImage.img.src} alt="Watermark" className="w-full h-full object-contain" />
+            <div className="absolute top-0.5 right-0.5 bg-black/80 text-white text-[8px] px-1 rounded flex items-center gap-0.5">
+              <Move className="w-2 h-2" /> Drag
             </div>
           </div>
         )}

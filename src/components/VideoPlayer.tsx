@@ -13,15 +13,11 @@ import {
   ChevronRight,
   Clock,
   Video,
-  Tv,
   SplitSquareVertical,
   PenTool,
   X,
   EyeOff,
   Link as LinkIcon,
-  Sliders,
-  Sparkles,
-  Layers,
 } from 'lucide-react';
 import { Cut, Project, ReviewNote } from '@/lib/supabase';
 import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds, STANDARD_FPS_LIST } from '@/lib/timecode';
@@ -34,6 +30,7 @@ export interface VideoPlayerHandle {
   play: () => void;
   togglePlay: () => void;
   captureFrameThumbnail: () => string;
+  getPosterDataUrl: () => string | null;
 }
 
 interface VideoPlayerProps {
@@ -93,18 +90,36 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
 
-    // Compare Modes: 'split' (side-by-side) | 'wipe' (split slider) | 'fade' (crossfade opacity) | 'a' | 'b'
+    // Cached poster/thumbnail DataURL for Vimeo/External
+    const [vimeoPosterDataUrl, setVimeoPosterDataUrl] = useState<string | null>(null);
+
+    // Compare Modes: 'split' | 'wipe' | 'fade' | 'a' | 'b'
     const [compareMode, setCompareMode] = useState<'split' | 'wipe' | 'fade' | 'a' | 'b'>('split');
-    const [wipePosition, setWipePosition] = useState<number>(50); // 0 to 100%
-    const [fadeOpacity, setFadeOpacity] = useState<number>(50); // 0 to 100%
+    const [wipePosition, setWipePosition] = useState<number>(50);
+    const [fadeOpacity, setFadeOpacity] = useState<number>(50);
 
     // On-Screen Drawing Overlay state
     const [activeOverlayImage, setActiveOverlayImage] = useState<string | null>(null);
     const [activeOverlayLabel, setActiveOverlayLabel] = useState<string | null>(null);
     const [showOverlay, setShowOverlay] = useState(true);
 
-    // Standalone clock timer
     const standaloneTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Fetch Vimeo High-Res Thumbnail whenever Vimeo URL changes
+    useEffect(() => {
+      if (cut.provider === 'vimeo' && cut.videoUrl) {
+        fetch(`/api/thumbnail?url=${encodeURIComponent(cut.videoUrl)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.dataUrl) {
+              setVimeoPosterDataUrl(data.dataUrl);
+            }
+          })
+          .catch(() => {});
+      } else {
+        setVimeoPosterDataUrl(null);
+      }
+    }, [cut.provider, cut.videoUrl]);
 
     // Helper: Capture clean thumbnail still
     const captureThumbnail = (): string => {
@@ -116,6 +131,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
       if (videoRef.current && videoRef.current.videoWidth > 0) {
         ctx.drawImage(videoRef.current, 0, 0, 640, 360);
+      } else if (vimeoPosterDataUrl) {
+        // Draw real Vimeo frame image
+        const img = new Image();
+        img.src = vimeoPosterDataUrl;
+        ctx.drawImage(img, 0, 0, 640, 360);
+
+        // Small bottom TC badge
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(8, 324, 120, 26);
+        ctx.fillStyle = '#60a5fa';
+        ctx.font = 'bold 12px monospace';
+        const tc = secondsToDisplayTimecode(
+          currentTime,
+          project.fps,
+          project.startTimecode,
+          project.dropFrame
+        );
+        ctx.fillText(tc, 16, 342);
       } else {
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(0, 0, 640, 360);
@@ -141,7 +174,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         ctx.fillText(`${project.fps} FPS • ${cut.name}`, 320, 245);
       }
 
-      return canvas.toDataURL('image/jpeg', 0.85);
+      return canvas.toDataURL('image/jpeg', 0.88);
     };
 
     // Expose control handles to parent
@@ -152,9 +185,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         onTimeUpdate(clamped);
 
         if (cut.provider === 'local' || cut.provider === 'drive') {
-          if (videoRef.current) {
-            videoRef.current.currentTime = clamped;
-          }
+          if (videoRef.current) videoRef.current.currentTime = clamped;
         } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
           try {
             vimeoPlayerInstanceRef.current.setCurrentTime(clamped).catch(() => {});
@@ -171,6 +202,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       getVideoElement: () => videoRef.current,
       getCurrentTime: () => currentTime,
       captureFrameThumbnail: captureThumbnail,
+      getPosterDataUrl: () => vimeoPosterDataUrl,
       pause: () => {
         if (cut.provider === 'local' || cut.provider === 'drive') {
           if (videoRef.current) videoRef.current.pause();
@@ -540,7 +572,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       <div className="flex flex-col bg-[#0b0e16] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl flex-1 min-h-0">
         {/* Top Embedded Control Bar inside Video Player */}
         <div className="h-10 bg-[#0e131f] border-b border-[#1d2538] px-3 flex items-center justify-between text-slate-300 text-xs shrink-0 select-none">
-          {/* Left: Quick Actions (Add Video Link & Compare) */}
+          {/* Left: Quick Actions */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -565,7 +597,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </button>
           </div>
 
-          {/* Right: Embedded FPS, Start TC & Big LCD Timecode */}
+          {/* Right: Embedded FPS, Start TC & LCD Timecode */}
           <div className="flex items-center gap-2">
             {/* FPS Selector */}
             <div className="flex items-center gap-1 bg-[#090d14] px-2 py-0.5 rounded-lg border border-[#232d44]">
@@ -610,12 +642,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </div>
         </div>
 
-        {/* Main Video Display Area (Flexible Proportion) */}
+        {/* Main Video Display Area */}
         <div className="relative flex-1 min-h-[260px] bg-black flex items-center justify-center overflow-hidden select-none">
           {cut.provider === 'compare' ? (
-            /* COMPARE ENGINE: Supports Split 50/50, Wipe Slider, Fade Crossfade, A/B */
+            /* COMPARE ENGINE */
             <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
-              {/* Compare Mode Switcher Top Center */}
               <div className="absolute top-2.5 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-1 rounded-xl flex items-center gap-1 z-30 shadow-2xl">
                 <button
                   type="button"
@@ -690,10 +721,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 </div>
               )}
 
-              {/* 2. WIPE MODE (Interactive vertical divider slider) */}
+              {/* 2. WIPE MODE */}
               {compareMode === 'wipe' && (
                 <div className="w-full h-full relative overflow-hidden flex items-center justify-center">
-                  {/* Clip A (Background Full) */}
                   <div className="absolute inset-0 w-full h-full">
                     {isVimeoA ? (
                       <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
@@ -701,8 +731,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
                     )}
                   </div>
-
-                  {/* Clip B (Foreground Clipped by Wipe Position) */}
                   <div
                     style={{ clipPath: `inset(0 0 0 ${wipePosition}%)` }}
                     className="absolute inset-0 w-full h-full pointer-events-none"
@@ -713,8 +741,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
                     )}
                   </div>
-
-                  {/* Wipe Vertical Divider Line */}
                   <div
                     style={{ left: `${wipePosition}%` }}
                     className="absolute top-0 bottom-0 w-1 bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)] pointer-events-none z-20"
@@ -723,8 +749,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       ⇔
                     </div>
                   </div>
-
-                  {/* Wipe Control Slider Bar Bottom Center */}
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] px-3 py-1.5 rounded-xl flex items-center gap-2 z-30 shadow-2xl">
                     <span className="text-[10px] font-bold text-blue-400">Clip A</span>
                     <input
@@ -740,10 +764,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 </div>
               )}
 
-              {/* 3. FADE MODE (Crossfade / Onion Skin Opacity Slider) */}
+              {/* 3. FADE MODE */}
               {compareMode === 'fade' && (
                 <div className="w-full h-full relative overflow-hidden flex items-center justify-center">
-                  {/* Clip A (Full Base) */}
                   <div className="absolute inset-0 w-full h-full">
                     {isVimeoA ? (
                       <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
@@ -751,8 +774,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
                     )}
                   </div>
-
-                  {/* Clip B (Overlay with Opacity) */}
                   <div
                     style={{ opacity: fadeOpacity / 100 }}
                     className="absolute inset-0 w-full h-full pointer-events-none"
@@ -763,8 +784,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
                     )}
                   </div>
-
-                  {/* Fade Control Slider Bar Bottom Center */}
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] px-3 py-1.5 rounded-xl flex items-center gap-2 z-30 shadow-2xl">
                     <span className="text-[10px] font-bold text-blue-400">Clip A</span>
                     <input
@@ -780,7 +799,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 </div>
               )}
 
-              {/* 4. A / B FULL TOGGLE */}
+              {/* 4. A/B SOLO */}
               {compareMode === 'a' && (
                 <div className="w-full h-full relative">
                   {isVimeoA ? (
@@ -807,7 +826,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 </div>
               )}
 
-              {/* Click to Play/Pause Overlay */}
               <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-10" />
             </div>
           ) : cut.provider === 'local' || cut.provider === 'drive' ? (

@@ -154,7 +154,7 @@ export async function generatePDFReport(
     format: 'a4',
   });
 
-  // Dark Header
+  // Dark Header Banner
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, 210, 42, 'F');
 
@@ -175,11 +175,11 @@ export async function generatePDFReport(
   doc.text(`Cut: ${cut.name} (${project.fps} fps)`, 120, 34);
 
   let yPos = 50;
-  const pageHeight = 280;
+  const pageHeight = 275;
 
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
-    const cardHeight = note.stillImageUrl ? 36 : 26;
+    const cardHeight = note.stillImageUrl ? 38 : 26;
 
     // Check if new page needed
     if (yPos + cardHeight > pageHeight) {
@@ -187,7 +187,7 @@ export async function generatePDFReport(
       yPos = 20;
     }
 
-    // Card background
+    // Card background box
     doc.setFillColor(248, 250, 252);
     doc.roundedRect(12, yPos, 186, cardHeight, 2, 2, 'F');
     doc.setDrawColor(226, 232, 240);
@@ -195,11 +195,23 @@ export async function generatePDFReport(
 
     // Thumbnail still on Left if available
     let textLeftMargin = 16;
-    if (note.stillImageUrl && note.stillImageUrl.startsWith('data:image')) {
+    if (note.stillImageUrl) {
       try {
-        doc.addImage(note.stillImageUrl, 'JPEG', 16, yPos + 4, 42, 26);
-        textLeftMargin = 64; // shift text to right of image
-      } catch (e) {}
+        let imgData = note.stillImageUrl;
+        if (!imgData.startsWith('data:image')) {
+          const res = await fetch(imgData);
+          const blob = await res.blob();
+          imgData = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        }
+        doc.addImage(imgData, 'JPEG', 16, yPos + 4, 46, 30);
+        textLeftMargin = 68;
+      } catch (e) {
+        console.error('PDF image error:', e);
+      }
     }
 
     // Category tag pill

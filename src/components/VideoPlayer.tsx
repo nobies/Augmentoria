@@ -15,9 +15,13 @@ import {
   Video,
   Tv,
   SplitSquareVertical,
+  PenTool,
+  X,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
-import { Cut, Project } from '@/lib/supabase';
-import { secondsToDisplayTimecode } from '@/lib/timecode';
+import { Cut, Project, ReviewNote } from '@/lib/supabase';
+import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds } from '@/lib/timecode';
 
 export interface VideoPlayerHandle {
   seekTo: (seconds: number) => void;
@@ -26,12 +30,15 @@ export interface VideoPlayerHandle {
   pause: () => void;
   play: () => void;
   togglePlay: () => void;
+  captureFrameThumbnail: () => string;
 }
 
 interface VideoPlayerProps {
   cut: Cut;
   project: Project;
   localVideoUrl: string | null;
+  notes: ReviewNote[];
+  selectedNote: ReviewNote | null;
   onTimeUpdate: (seconds: number) => void;
   onDurationChange: (duration: number) => void;
   onMarkIn: () => void;
@@ -40,7 +47,17 @@ interface VideoPlayerProps {
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   (
-    { cut, project, localVideoUrl, onTimeUpdate, onDurationChange, onMarkIn, onMarkOut },
+    {
+      cut,
+      project,
+      localVideoUrl,
+      notes,
+      selectedNote,
+      onTimeUpdate,
+      onDurationChange,
+      onMarkIn,
+      onMarkOut,
+    },
     ref
   ) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -64,8 +81,54 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Compare view mode: 'split' | 'a' | 'b'
     const [compareView, setCompareView] = useState<'split' | 'a' | 'b'>('split');
 
+    // On-Screen Drawing Overlay state
+    const [activeOverlayImage, setActiveOverlayImage] = useState<string | null>(null);
+    const [showOverlay, setShowOverlay] = useState(true);
+
     // Standalone clock timer
     const standaloneTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Helper: Capture a clean thumbnail still from current video or LCD
+    const captureThumbnail = (): string => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+
+      if (videoRef.current && videoRef.current.videoWidth > 0) {
+        ctx.drawImage(videoRef.current, 0, 0, 640, 360);
+      } else {
+        // Fallback stylish LCD slate preview for Vimeo/Standalone
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, 640, 360);
+        // Header
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 0, 640, 60);
+        ctx.fillStyle = '#3b82f6';
+        ctx.font = 'bold 20px monospace';
+        ctx.fillText(project.name.toUpperCase(), 24, 38);
+
+        // Big Timecode
+        const tc = secondsToDisplayTimecode(
+          currentTime,
+          project.fps,
+          project.startTimecode,
+          project.dropFrame
+        );
+        ctx.fillStyle = '#60a5fa';
+        ctx.font = 'bold 54px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(tc, 320, 200);
+
+        // Subtitle
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '16px monospace';
+        ctx.fillText(`${project.fps} FPS • ${cut.name}`, 320, 250);
+      }
+
+      return canvas.toDataURL('image/jpeg', 0.85);
+    };
 
     // Expose control handles to parent
     useImperativeHandle(ref, () => ({
@@ -91,6 +154,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       },
       getVideoElement: () => videoRef.current,
       getCurrentTime: () => currentTime,
+      captureFrameThumbnail: captureThumbnail,
       pause: () => {
         if (cut.provider === 'local' || cut.provider === 'drive') {
           if (videoRef.current) videoRef.current.pause();
@@ -125,6 +189,48 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         togglePlayback();
       },
     }));
+
+    // Detect if current time matches a note with drawing or if a note is explicitly selected
+    useEffect(() => {
+      if (selectedNote && selectedNote.drawingData) {
+        setActiveOverlayImage(selectedNote.drawingData);
+        setShowOverlay(true);
+        return;
+      }
+
+      // Check notes at current playback position (within 1 second window)
+      const currentTc = secondsToDisplayTimecode(
+        currentTime,
+        project.fps,
+        project.startTimecode,
+        project.dropFrame
+      );
+
+      const matchingNote = notes.find(n => {
+        if (!n.drawingData) return false;
+        const nFrames = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+        const sFrames = timecodeToFrames(
+          project.startTimecode || '01:00:00:00',
+          project.fps,
+          project.dropFrame
+        );
+        const noteSec = framesToSeconds(Math.max(0, nFrames - sFrames), project.fps);
+
+        if (n.timecodeOut) {
+          const outFrames = timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame);
+          const outSec = framesToSeconds(Math.max(0, outFrames - sFrames), project.fps);
+          return currentTime >= noteSec && currentTime <= outSec;
+        }
+
+        return Math.abs(currentTime - noteSec) < 0.5;
+      });
+
+      if (matchingNote && matchingNote.drawingData) {
+        setActiveOverlayImage(matchingNote.drawingData);
+      } else if (!selectedNote) {
+        setActiveOverlayImage(null);
+      }
+    }, [currentTime, selectedNote, notes, project]);
 
     // Toggle Play/Pause across all modes
     const togglePlayback = () => {
@@ -258,7 +364,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             if (!isMounted) return;
             const Vimeo = module.default || module;
 
-            // Player A (Master)
             const playerA = new (Vimeo as any)(vimeoCompareContainerARef.current, {
               url: cut.videoUrl,
               responsive: true,
@@ -267,13 +372,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             });
             vimeoPlayerARef.current = playerA;
 
-            // Player B (Slave / Sync)
             const playerB = new (Vimeo as any)(vimeoCompareContainerBRef.current, {
               url: cut.videoUrlB,
               responsive: true,
               autoplay: false,
               controls: false,
-              muted: true, // Mute clip B by default to prevent audio clash
+              muted: true,
             });
             vimeoPlayerBRef.current = playerB;
 
@@ -305,7 +409,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               if (isMounted) {
                 setCurrentTime(data.seconds);
                 onTimeUpdate(data.seconds);
-                // Keep player B in tight lockstep
                 playerB.getCurrentTime().then((bTime: number) => {
                   if (Math.abs(bTime - data.seconds) > 0.3) {
                     playerB.setCurrentTime(data.seconds).catch(() => {});
@@ -591,6 +694,37 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 <span>{project.fps} FPS</span>
                 <span>•</span>
                 <span>{project.dropFrame ? 'DROP FRAME' : 'NON-DROP FRAME'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* ACTIVE ON-SCREEN DRAWING OVERLAY LAYER */}
+          {activeOverlayImage && showOverlay && (
+            <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center animate-in fade-in">
+              <img
+                src={activeOverlayImage}
+                alt="Frame Markup"
+                className="w-full h-full object-contain pointer-events-none"
+              />
+
+              {/* Overlay Indicator Badge with Toggle */}
+              <div className="absolute bottom-3 left-3 bg-[#0d121c]/90 backdrop-blur-md border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-2 pointer-events-auto">
+                <PenTool className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>Frame Drawing Active</span>
+                <button
+                  onClick={() => setShowOverlay(!showOverlay)}
+                  className="p-1 text-slate-400 hover:text-white transition"
+                  title="Hide markup overlay"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setActiveOverlayImage(null)}
+                  className="p-1 text-slate-400 hover:text-red-400 transition"
+                  title="Dismiss markup"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           )}

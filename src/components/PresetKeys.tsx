@@ -9,6 +9,8 @@ import {
   PenTool,
   Mic,
   Send,
+  Image as ImageIcon,
+  Upload,
 } from 'lucide-react';
 
 export interface CategoryPreset {
@@ -121,6 +123,7 @@ interface PresetKeysProps {
   activeAudioBlob: Blob | null;
   onClearDrawingSnapshot: () => void;
   onClearAudioBlob: () => void;
+  onAttachImageSnapshot: (dataUrl: string) => void;
 }
 
 export const PresetKeys: React.FC<PresetKeysProps> = ({
@@ -135,6 +138,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
   activeAudioBlob,
   onClearDrawingSnapshot,
   onClearAudioBlob,
+  onAttachImageSnapshot,
 }) => {
   const [activeCategory, setActiveCategory] = useState<'editorial' | 'vfx' | 'color' | 'sound'>('editorial');
   const [customText, setCustomText] = useState('');
@@ -144,7 +148,6 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
 
   const handleKeyClick = (keyLabel: string) => {
     setSelectedKey(keyLabel);
-    // Instant add note on click with current text (if any) or preset label
     onAddNote({
       category: activeCategory,
       presetLabel: keyLabel,
@@ -165,6 +168,17 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
       audioBlob: activeAudioBlob || undefined,
     });
     setCustomText('');
+  };
+
+  const handleDirectImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        onAttachImageSnapshot(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -239,7 +253,6 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
               title={`Click to stamp [${k}] at ${currentTc}`}
             >
               <span>{k}</span>
-              {/* Quick stamp hint */}
               <span className="absolute bottom-1 right-1.5 text-[9px] text-slate-500 opacity-0 group-hover:opacity-100 font-mono">
                 Stamp
               </span>
@@ -255,8 +268,8 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           <div className="relative group shrink-0">
             <img
               src={activeDrawingSnapshot}
-              alt="Attached Drawing"
-              className="w-10 h-10 object-cover rounded-lg border border-amber-500"
+              alt="Attached Image/Drawing"
+              className="w-10 h-10 object-cover rounded-lg border border-amber-500 shadow"
             />
             <button
               type="button"
@@ -272,7 +285,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
         {activeAudioBlob && (
           <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-bold shrink-0">
             <Mic className="w-4 h-4 animate-pulse text-red-400" />
-            <span>Voice Clip Ready</span>
+            <span>Voice Clip</span>
             <button
               type="button"
               onClick={onClearAudioBlob}
@@ -288,7 +301,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           type="text"
           value={customText}
           onChange={e => setCustomText(e.target.value)}
-          placeholder={`Type custom comment for timestamp ${currentTc}...`}
+          placeholder={`Type comment for timestamp ${currentTc}...`}
           className="flex-1 px-4 py-2.5 rounded-xl bg-[#090d14] border border-[#222c42] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
         />
 
@@ -305,6 +318,17 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
         >
           <PenTool className="w-4 h-4" />
         </button>
+
+        {/* Attach Watermark / Reference Image File */}
+        <label className="cursor-pointer">
+          <div
+            className="p-2.5 rounded-xl bg-[#151b29] hover:bg-[#1f2a40] border border-[#222c42] text-slate-300 hover:text-blue-400 transition"
+            title="Attach Watermark or Reference Image"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </div>
+          <input type="file" accept="image/*" onChange={handleDirectImageUpload} className="hidden" />
+        </label>
 
         {/* Record Voice Note Button */}
         <button
@@ -325,8 +349,8 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           type="submit"
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/30 transition active:scale-95 shrink-0"
         >
-          <Send className="w-4 h-4" />
-          <span>Add Note</span>
+          <Send className="w-3.5 h-3.5" />
+          <span>Add</span>
         </button>
       </form>
     </div>

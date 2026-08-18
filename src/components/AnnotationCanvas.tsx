@@ -10,6 +10,8 @@ import {
   Trash2,
   Check,
   X,
+  Image as ImageIcon,
+  Upload,
 } from 'lucide-react';
 
 interface AnnotationCanvasProps {
@@ -36,7 +38,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [history, setHistory] = useState<ImageData[]>([]);
 
-  // Fixed internal coordinate space (1920x1080) for high-definition drawing
   const CANVAS_WIDTH = 1920;
   const CANVAS_HEIGHT = 1080;
 
@@ -87,7 +88,41 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     }
   };
 
-  // Convert client mouse event to internal canvas coordinates (0..1920, 0..1080)
+  // Attach Image / Watermark / Plate onto the canvas
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !canvasRef.current) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (!canvas || !ctx) return;
+
+        // Scale image reasonably (max 40% of canvas)
+        const maxWidth = CANVAS_WIDTH * 0.45;
+        const maxHeight = CANVAS_HEIGHT * 0.45;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth || h > maxHeight) {
+          const ratio = Math.min(maxWidth / w, maxHeight / h);
+          w = w * ratio;
+          h = h * ratio;
+        }
+
+        // Draw in center
+        const x = (CANVAS_WIDTH - w) / 2;
+        const y = (CANVAS_HEIGHT - h) / 2;
+        ctx.drawImage(img, x, y, w, h);
+        saveState();
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const getCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -111,7 +146,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       ctx.beginPath();
       ctx.moveTo(coords.x, coords.y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = strokeWidth * 2; // scaled for 1080p
+      ctx.lineWidth = strokeWidth * 2;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
     }
@@ -220,7 +255,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
             <PenTool className="w-3.5 h-3.5" />
-            Freeze Frame Markup
+            Freeze Frame Markup & Plate
           </span>
 
           {/* Tools */}
@@ -261,6 +296,15 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
               />
             ))}
           </div>
+
+          {/* Upload Watermark / Reference Image Button */}
+          <label className="cursor-pointer ml-2">
+            <div className="px-2.5 py-1 rounded-lg bg-[#1a2336] hover:bg-[#25324d] border border-[#2e3b57] text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 transition">
+              <Upload className="w-3 h-3 text-blue-400" />
+              <span>Add Watermark / Image</span>
+            </div>
+            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          </label>
         </div>
 
         {/* Actions */}
@@ -297,7 +341,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         </div>
       </div>
 
-      {/* Canvas Area (100% matched to Video 16:9 Aspect Ratio) */}
+      {/* Canvas Area */}
       <div className="flex-1 w-full h-full relative cursor-crosshair overflow-hidden flex items-center justify-center">
         <canvas
           ref={canvasRef}

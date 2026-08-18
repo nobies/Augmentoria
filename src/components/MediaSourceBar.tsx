@@ -15,11 +15,11 @@ import { STANDARD_FPS_LIST } from '@/lib/timecode';
 
 interface MediaSourceBarProps {
   currentUrl: string;
-  provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare';
+  provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare' | 'drive';
   fps: number;
   dropFrame: boolean;
   startTc: string;
-  onUpdateSource: (url: string, provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare') => void;
+  onUpdateSource: (url: string, provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare' | 'drive') => void;
   onUpdateFps: (fps: number) => void;
   onUpdateStartTc: (startTc: string) => void;
   onUpdateDropFrame: (df: boolean) => void;

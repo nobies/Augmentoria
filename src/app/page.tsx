@@ -70,8 +70,9 @@ export default function Home() {
   const [inTime, setInTime] = useState<number | null>(null);
   const [outTime, setOutTime] = useState<number | null>(null);
 
-  // Notes
+  // Notes & Selected Note
   const [notes, setNotes] = useState<ReviewNote[]>([]);
+  const [selectedNote, setSelectedNote] = useState<ReviewNote | null>(null);
 
   // Modals & Panels
   const [isBrandingOpen, setIsBrandingOpen] = useState(false);
@@ -83,6 +84,7 @@ export default function Home() {
 
   // Active Pending Attachments
   const [activeDrawingSnapshot, setActiveDrawingSnapshot] = useState<string | null>(null);
+  const [activeDrawingVector, setActiveDrawingVector] = useState<string | null>(null);
   const [activeAudioBlob, setActiveAudioBlob] = useState<Blob | null>(null);
 
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null);
@@ -118,13 +120,13 @@ export default function Home() {
   // Update Source
   const handleUpdateSource = async (
     url: string,
-    provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare'
+    provider: 'local' | 'youtube' | 'vimeo' | 'standalone' | 'compare' | 'drive'
   ) => {
     if (!activeCut) return;
     const updatedCut: Cut = {
       ...activeCut,
       provider,
-      videoUrl: url || activeCut.videoUrl, // Preserve videoUrl when switching to standalone
+      videoUrl: url || activeCut.videoUrl,
     };
     await saveCut(updatedCut);
     setActiveCut(updatedCut);
@@ -202,6 +204,7 @@ export default function Home() {
     setLocalVideoUrl(vUrl);
     const nts = await getNotesForCut(cut.id);
     setNotes(nts);
+    setSelectedNote(null);
     setCurrentTime(0);
     setInTime(null);
     setOutTime(null);
@@ -309,6 +312,12 @@ export default function Home() {
       frameOutNum = timecodeToFrames(tcOut, activeProject.fps, activeProject.dropFrame);
     }
 
+    // Auto capture frame thumbnail if not already provided
+    let finalThumbnail = data.stillImageUrl || activeDrawingSnapshot;
+    if (!finalThumbnail && videoPlayerRef.current) {
+      finalThumbnail = videoPlayerRef.current.captureFrameThumbnail();
+    }
+
     const newNote: ReviewNote = {
       id: noteId,
       cutId: activeCut.id,
@@ -319,8 +328,8 @@ export default function Home() {
       timecode: noteTc,
       timecodeOut: tcOut,
       frameOut: frameOutNum,
-      drawingData: data.drawingData,
-      stillImageUrl: data.stillImageUrl,
+      drawingData: activeDrawingVector || data.drawingData,
+      stillImageUrl: finalThumbnail || undefined,
       audioBlobUrl: audioUrl,
       authorName: 'Reviewer',
       isResolved: false,
@@ -331,6 +340,7 @@ export default function Home() {
     setNotes(prev => [...prev, newNote].sort((a, b) => a.frameNumber - b.frameNumber));
 
     setActiveDrawingSnapshot(null);
+    setActiveDrawingVector(null);
     setActiveAudioBlob(null);
     setInTime(null);
     setOutTime(null);
@@ -349,6 +359,7 @@ export default function Home() {
   const handleDeleteNote = async (noteId: string) => {
     await dbDeleteNote(noteId);
     setNotes(prev => prev.filter(n => n.id !== noteId));
+    if (selectedNote?.id === noteId) setSelectedNote(null);
   };
 
   // Update Note Text
@@ -360,9 +371,11 @@ export default function Home() {
     setNotes(prev => prev.map(n => (n.id === noteId ? updated : n)));
   };
 
-  // Seek to Note
+  // Seek to Note & Show On-Screen Markup
   const handleSeekToNote = (note: ReviewNote) => {
     if (!activeProject || !videoPlayerRef.current) return;
+    setSelectedNote(note);
+
     const noteFrames = timecodeToFrames(note.timecode, activeProject.fps, activeProject.dropFrame);
     const startFrames = timecodeToFrames(
       activeProject.startTimecode || '01:00:00:00',
@@ -464,7 +477,7 @@ export default function Home() {
       {/* Main Screener Workspace */}
       {currentTool === 'screener' ? (
         <main className="flex-1 p-4 lg:p-6 flex flex-col gap-4 max-w-[1700px] w-full mx-auto">
-          {/* Media Source & Compare & Timebase Bar */}
+          {/* Media Source & Compare Bar */}
           {activeCut && activeProject && (
             <MediaSourceBar
               currentUrl={activeCut.videoUrl || ''}
@@ -493,6 +506,8 @@ export default function Home() {
                     cut={activeCut}
                     project={activeProject}
                     localVideoUrl={localVideoUrl}
+                    notes={notes}
+                    selectedNote={selectedNote}
                     onTimeUpdate={setCurrentTime}
                     onDurationChange={setDuration}
                     onMarkIn={handleMarkIn}
@@ -511,6 +526,7 @@ export default function Home() {
                     videoElement={videoPlayerRef.current?.getVideoElement() || null}
                     onSaveDrawing={(drawingDataUrl, snapshotDataUrl) => {
                       setActiveDrawingSnapshot(snapshotDataUrl);
+                      setActiveDrawingVector(drawingDataUrl);
                       setIsDrawingOpen(false);
                     }}
                     onCancel={() => setIsDrawingOpen(false)}
@@ -564,8 +580,14 @@ export default function Home() {
                 }}
                 activeDrawingSnapshot={activeDrawingSnapshot}
                 activeAudioBlob={activeAudioBlob}
-                onClearDrawingSnapshot={() => setActiveDrawingSnapshot(null)}
+                onClearDrawingSnapshot={() => {
+                  setActiveDrawingSnapshot(null);
+                  setActiveDrawingVector(null);
+                }}
                 onClearAudioBlob={() => setActiveAudioBlob(null)}
+                onAttachImageSnapshot={imgUrl => {
+                  setActiveDrawingSnapshot(imgUrl);
+                }}
               />
             </div>
 
@@ -573,6 +595,7 @@ export default function Home() {
             <div className="lg:col-span-5 h-[calc(100vh-10rem)] sticky top-20 flex flex-col">
               <NotesList
                 notes={notes}
+                selectedNoteId={selectedNote?.id || null}
                 onSeekToNote={handleSeekToNote}
                 onToggleResolved={handleToggleResolved}
                 onDeleteNote={handleDeleteNote}

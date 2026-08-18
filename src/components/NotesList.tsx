@@ -13,11 +13,14 @@ import {
   Check,
   Edit2,
   ExternalLink,
+  PenTool,
+  Film,
 } from 'lucide-react';
 import { ReviewNote } from '@/lib/supabase';
 
 interface NotesListProps {
   notes: ReviewNote[];
+  selectedNoteId: string | null;
   onSeekToNote: (note: ReviewNote) => void;
   onToggleResolved: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
@@ -26,6 +29,7 @@ interface NotesListProps {
 
 export const NotesList: React.FC<NotesListProps> = ({
   notes,
+  selectedNoteId,
   onSeekToNote,
   onToggleResolved,
   onDeleteNote,
@@ -146,6 +150,7 @@ export const NotesList: React.FC<NotesListProps> = ({
           </div>
         ) : (
           filteredNotes.map(n => {
+            const isSelected = selectedNoteId === n.id;
             const catBadgeClass =
               n.category === 'editorial'
                 ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
@@ -160,149 +165,170 @@ export const NotesList: React.FC<NotesListProps> = ({
                 key={n.id}
                 onClick={() => onSeekToNote(n)}
                 className={`p-3 rounded-xl border transition cursor-pointer group relative flex flex-col gap-2 ${
-                  n.isResolved
+                  isSelected
+                    ? 'bg-blue-600/20 border-blue-500 shadow-xl shadow-blue-900/20 ring-1 ring-blue-500/50'
+                    : n.isResolved
                     ? 'bg-[#111622]/50 border-[#1a2133] opacity-60'
                     : 'bg-[#131926] border-[#222c42] hover:bg-[#182133] hover:border-[#2e3b59] shadow-md'
                 }`}
               >
-                {/* Top Row: Timecode, Preset Action, Category, Checkbox */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {/* Timecode Badge (Click to jump) */}
-                    <span className="font-mono text-xs font-bold text-blue-400 px-2 py-0.5 rounded bg-[#0b0e16] border border-[#1e273b]">
-                      {n.timecode}
-                      {n.timecodeOut ? ` → ${n.timecodeOut}` : ''}
-                    </span>
-
-                    {/* Preset Action Title */}
-                    <span className="text-xs font-bold text-white">{n.presetLabel}</span>
-
-                    {/* Category pill */}
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase border ${catBadgeClass}`}
-                    >
-                      {n.category}
-                    </span>
-                  </div>
-
-                  {/* Actions (Resolved toggle, Delete) */}
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        onToggleResolved(n.id);
-                      }}
-                      className="p-1 rounded text-slate-400 hover:text-emerald-400 transition"
-                      title={n.isResolved ? 'Mark as Open' : 'Mark as Resolved'}
-                    >
-                      {n.isResolved ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <Circle className="w-4 h-4 hover:text-white" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        onDeleteNote(n.id);
-                      }}
-                      className="p-1 rounded text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
-                      title="Delete Note"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Comment Text or Inline Edit */}
-                {editingId === n.id ? (
+                {/* Main Row: Thumbnail on Left + Info on Right */}
+                <div className="flex gap-3 items-start">
+                  {/* Thumbnail Still Image (Prominent Frame Still) */}
                   <div
-                    onClick={e => e.stopPropagation()}
-                    className="flex items-center gap-2 pt-1"
+                    onClick={e => {
+                      if (n.stillImageUrl) {
+                        e.stopPropagation();
+                        setPreviewImage(n.stillImageUrl);
+                      }
+                    }}
+                    className="relative w-24 h-16 rounded-lg bg-[#0b0e16] border border-[#232d44] overflow-hidden shrink-0 group/thumb cursor-zoom-in flex items-center justify-center"
                   >
-                    <input
-                      type="text"
-                      value={editText}
-                      onChange={e => setEditText(e.target.value)}
-                      className="flex-1 px-2.5 py-1 rounded-lg bg-[#0a0d14] border border-blue-500 text-xs text-white focus:outline-none"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => handleSaveEdit(n.id)}
-                      className="p-1 rounded bg-blue-600 text-white hover:bg-blue-500"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-2">
-                    <p
-                      className={`text-xs ${
-                        n.text ? 'text-slate-200' : 'text-slate-500 italic'
-                      } ${n.isResolved ? 'line-through text-slate-500' : ''}`}
-                    >
-                      {n.text || 'No comment provided'}
-                    </p>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleStartEdit(n);
-                      }}
-                      className="p-1 text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition shrink-0"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
+                    {n.stillImageUrl ? (
+                      <>
+                        <img
+                          src={n.stillImageUrl}
+                          alt="Frame Still"
+                          className="w-full h-full object-cover group-hover/thumb:scale-105 transition"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition">
+                          <ExternalLink className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-slate-600">
+                        <Film className="w-4 h-4 mb-1 text-slate-500" />
+                        <span className="text-[9px] font-mono text-slate-500">Frame Still</span>
+                      </div>
+                    )}
 
-                {/* Attachments: Voice Clip Audio Player & Frame Drawing Thumbnail */}
-                <div className="flex items-center gap-3 pt-1">
-                  {/* Voice Note Player */}
-                  {n.audioBlobUrl && (
-                    <div
-                      onClick={e => e.stopPropagation()}
-                      className="flex items-center gap-2 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-[11px]"
-                    >
-                      <button
-                        onClick={() => togglePlayAudio(n.id, n.audioBlobUrl)}
-                        className="w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center transition"
-                      >
-                        {playingAudioId === n.id ? (
-                          <Pause className="w-2.5 h-2.5" />
-                        ) : (
-                          <Play className="w-2.5 h-2.5 ml-0.5" />
-                        )}
-                      </button>
-                      <span className="font-semibold">Voice Note</span>
-                      <audio
-                        id={`audio-${n.id}`}
-                        src={n.audioBlobUrl}
-                        onEnded={() => setPlayingAudioId(null)}
-                        className="hidden"
-                      />
-                    </div>
-                  )}
+                    {/* Drawing indicator badge if drawn */}
+                    {n.drawingData && (
+                      <div className="absolute bottom-1 right-1 p-1 rounded-md bg-amber-500 text-black shadow font-bold text-[9px] flex items-center gap-0.5">
+                        <PenTool className="w-2.5 h-2.5" />
+                      </div>
+                    )}
+                  </div>
 
-                  {/* Frame Drawing Snapshot */}
-                  {n.stillImageUrl && (
-                    <div
-                      onClick={e => {
-                        e.stopPropagation();
-                        setPreviewImage(n.stillImageUrl || null);
-                      }}
-                      className="relative group/thumb cursor-zoom-in"
-                    >
-                      <img
-                        src={n.stillImageUrl}
-                        alt="Frame Snapshot"
-                        className="w-16 h-10 object-cover rounded-lg border border-slate-700 hover:border-amber-400 transition"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center rounded-lg transition">
-                        <ExternalLink className="w-3 h-3 text-white" />
+                  {/* Right: Content details */}
+                  <div className="flex-1 min-w-0 flex flex-col gap-1">
+                    {/* Header: Timecode + Preset + Actions */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Timecode Badge */}
+                        <span className="font-mono text-xs font-bold text-blue-400 px-2 py-0.5 rounded bg-[#0b0e16] border border-[#1e273b]">
+                          {n.timecode}
+                          {n.timecodeOut ? ` → ${n.timecodeOut}` : ''}
+                        </span>
+
+                        {/* Preset Action Title */}
+                        <span className="text-xs font-bold text-white">{n.presetLabel}</span>
+
+                        {/* Category badge */}
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border ${catBadgeClass}`}
+                        >
+                          {n.category}
+                        </span>
+                      </div>
+
+                      {/* Action buttons (Resolve & Delete) */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            onToggleResolved(n.id);
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-emerald-400 transition"
+                          title={n.isResolved ? 'Mark as Open' : 'Mark as Resolved'}
+                        >
+                          {n.isResolved ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <Circle className="w-4 h-4 hover:text-white" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            onDeleteNote(n.id);
+                          }}
+                          className="p-1 rounded text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
+                          title="Delete Note"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-                  )}
+
+                    {/* Note Comment Text or Edit Field */}
+                    {editingId === n.id ? (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-2 pt-1"
+                      >
+                        <input
+                          type="text"
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          className="flex-1 px-2.5 py-1 rounded-lg bg-[#0a0d14] border border-blue-500 text-xs text-white focus:outline-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveEdit(n.id)}
+                          className="p-1 rounded bg-blue-600 text-white hover:bg-blue-500"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-2">
+                        <p
+                          className={`text-xs ${
+                            n.text ? 'text-slate-200' : 'text-slate-500 italic'
+                          } ${n.isResolved ? 'line-through text-slate-500' : ''}`}
+                        >
+                          {n.text || 'No comment added'}
+                        </p>
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleStartEdit(n);
+                          }}
+                          className="p-1 text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition shrink-0"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Voice Note Audio Player (if recorded) */}
+                    {n.audioBlobUrl && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] mt-1 w-fit"
+                      >
+                        <button
+                          onClick={() => togglePlayAudio(n.id, n.audioBlobUrl)}
+                          className="w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center transition shadow"
+                        >
+                          {playingAudioId === n.id ? (
+                            <Pause className="w-2.5 h-2.5" />
+                          ) : (
+                            <Play className="w-2.5 h-2.5 ml-0.5" />
+                          )}
+                        </button>
+                        <span className="font-bold">Play Voice Note</span>
+                        <audio
+                          id={`audio-${n.id}`}
+                          src={n.audioBlobUrl}
+                          onEnded={() => setPlayingAudioId(null)}
+                          className="hidden"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

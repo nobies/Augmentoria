@@ -79,6 +79,28 @@ export async function getStudioBranding(): Promise<StudioBranding> {
     secondaryColor: '#10b981',
   };
 
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.from('studios').select('*').limit(1).single();
+      if (data && !error) {
+        const cloudBranding: StudioBranding = {
+          id: data.id,
+          name: data.name || 'Studio',
+          tagline: data.tagline || 'Post-Production Suite',
+          primaryColor: data.primary_color || '#3b82f6',
+          secondaryColor: data.secondary_color || '#10b981',
+          logoUrl: data.logo_url,
+          logoUrlDark: data.logo_url_dark,
+        };
+        const db = await getDB();
+        if (db) await db.put('branding', cloudBranding, 'current');
+        return cloudBranding;
+      }
+    } catch (e) {
+      console.warn('Supabase fetch error (branding):', e);
+    }
+  }
+
   const db = await getDB();
   if (!db) return defaultBranding;
 
@@ -114,6 +136,38 @@ export async function saveStudioBranding(branding: StudioBranding): Promise<void
 // PROJECTS
 // ----------------------------------------------------
 export async function getAllProjects(): Promise<Project[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (data && !error && data.length > 0) {
+        const cloudProjects: Project[] = data.map(d => ({
+          id: d.id,
+          name: d.name,
+          description: d.description,
+          fps: Number(d.fps) || 25,
+          dropFrame: Boolean(d.drop_frame),
+          startTimecode: d.start_timecode || '01:00:00:00',
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+        }));
+
+        const db = await getDB();
+        if (db) {
+          for (const p of cloudProjects) {
+            await db.put('projects', p);
+          }
+        }
+        return cloudProjects;
+      }
+    } catch (e) {
+      console.warn('Supabase fetch error (projects):', e);
+    }
+  }
+
   const db = await getDB();
   if (!db) return [];
 
@@ -145,6 +199,11 @@ export async function getAllProjects(): Promise<Project[]> {
   await db.put('projects', initialProject);
   await db.put('cuts', initialCut);
 
+  if (isSupabaseConfigured && supabase) {
+    saveProject(initialProject);
+    saveCut(initialCut);
+  }
+
   return [initialProject];
 }
 
@@ -163,6 +222,8 @@ export async function saveProject(project: Project): Promise<void> {
         fps: project.fps,
         drop_frame: project.dropFrame,
         start_timecode: project.startTimecode,
+        status: 'active',
+        updated_at: new Date().toISOString(),
       });
     } catch (e) {
       console.warn('Supabase sync error (project):', e);
@@ -174,10 +235,17 @@ export async function deleteProject(projectId: string): Promise<void> {
   const db = await getDB();
   if (db) {
     await db.delete('projects', projectId);
-    // Delete associated cuts and notes
     const cuts = await db.getAllFromIndex('cuts', 'by-project', projectId);
     for (const cut of cuts) {
       await deleteCut(cut.id);
+    }
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('projects').delete().eq('id', projectId);
+    } catch (e) {
+      console.warn('Supabase sync error (delete project):', e);
     }
   }
 }
@@ -186,6 +254,41 @@ export async function deleteProject(projectId: string): Promise<void> {
 // CUTS / VERSIONS
 // ----------------------------------------------------
 export async function getCutsForProject(projectId: string): Promise<Cut[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('cuts')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+
+      if (data && !error && data.length > 0) {
+        const cloudCuts: Cut[] = data.map(d => ({
+          id: d.id,
+          projectId: d.project_id,
+          name: d.name,
+          provider: d.provider as any,
+          videoUrl: d.video_url,
+          videoUrlB: d.video_url_b,
+          driveFileId: d.drive_file_id,
+          durationSeconds: Number(d.duration_seconds) || 0,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+        }));
+
+        const db = await getDB();
+        if (db) {
+          for (const c of cloudCuts) {
+            await db.put('cuts', c);
+          }
+        }
+        return cloudCuts;
+      }
+    } catch (e) {
+      console.warn('Supabase fetch error (cuts):', e);
+    }
+  }
+
   const db = await getDB();
   if (!db) return [];
   return await db.getAllFromIndex('cuts', 'by-project', projectId);
@@ -205,8 +308,10 @@ export async function saveCut(cut: Cut): Promise<void> {
         name: cut.name,
         provider: cut.provider,
         video_url: cut.videoUrl || '',
+        video_url_b: cut.videoUrlB || '',
         drive_file_id: cut.driveFileId || '',
         duration_seconds: cut.durationSeconds || 0,
+        updated_at: new Date().toISOString(),
       });
     } catch (e) {
       console.warn('Supabase sync error (cut):', e);
@@ -223,6 +328,14 @@ export async function deleteCut(cutId: string): Promise<void> {
     for (const n of notes) {
       await db.delete('notes', n.id);
       await db.delete('audioFiles', n.id);
+    }
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('cuts').delete().eq('id', cutId);
+    } catch (e) {
+      console.warn('Supabase sync error (delete cut):', e);
     }
   }
 }
@@ -252,6 +365,47 @@ export async function getLocalVideoBlobUrl(cutId: string): Promise<string | null
 // REVIEW NOTES
 // ----------------------------------------------------
 export async function getNotesForCut(cutId: string): Promise<ReviewNote[]> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('cut_id', cutId)
+        .order('frame_number', { ascending: true });
+
+      if (data && !error) {
+        const cloudNotes: ReviewNote[] = data.map(d => ({
+          id: d.id,
+          cutId: d.cut_id,
+          category: d.category as any,
+          presetLabel: d.preset_label,
+          text: d.text || '',
+          frameNumber: Number(d.frame_number) || 0,
+          timecode: d.timecode,
+          timecodeOut: d.timecode_out,
+          frameOut: d.frame_out ? Number(d.frame_out) : undefined,
+          drawingData: d.drawing_data,
+          colorGrade: d.color_grade,
+          stillImageUrl: d.still_image_url,
+          audioBlobUrl: d.audio_url,
+          authorName: d.author_name || 'Reviewer',
+          isResolved: Boolean(d.is_resolved),
+          createdAt: d.created_at,
+        }));
+
+        const db = await getDB();
+        if (db) {
+          for (const n of cloudNotes) {
+            await db.put('notes', n);
+          }
+        }
+        return cloudNotes;
+      }
+    } catch (e) {
+      console.warn('Supabase fetch error (notes):', e);
+    }
+  }
+
   const db = await getDB();
   if (!db) return [];
   const notes = await db.getAllFromIndex('notes', 'by-cut', cutId);
@@ -277,6 +431,7 @@ export async function saveReviewNote(note: ReviewNote): Promise<void> {
         timecode_out: note.timecodeOut || null,
         frame_out: note.frameOut || null,
         drawing_data: note.drawingData || null,
+        color_grade: note.colorGrade || null,
         still_image_url: note.stillImageUrl || null,
         audio_url: note.audioBlobUrl || null,
         author_name: note.authorName,
@@ -312,6 +467,26 @@ export async function saveAudioBlob(noteId: string, blob: Blob): Promise<string>
   if (db) {
     await db.put('audioFiles', { noteId, blob });
   }
+
+  // Upload to Supabase Storage if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const fileName = `${noteId}.webm`;
+      const { data, error } = await supabase.storage
+        .from('media-audio')
+        .upload(fileName, blob, { upsert: true });
+
+      if (data && !error) {
+        const { data: publicUrlData } = supabase.storage
+          .from('media-audio')
+          .getPublicUrl(fileName);
+        return publicUrlData.publicUrl;
+      }
+    } catch (e) {
+      console.warn('Supabase storage audio upload error:', e);
+    }
+  }
+
   return URL.createObjectURL(blob);
 }
 

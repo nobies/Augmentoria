@@ -12,6 +12,8 @@ import {
   X,
   Image as ImageIcon,
   Upload,
+  Sliders,
+  Move,
 } from 'lucide-react';
 
 interface AnnotationCanvasProps {
@@ -21,7 +23,16 @@ interface AnnotationCanvasProps {
   onCancel: () => void;
 }
 
-type Tool = 'pen' | 'arrow' | 'rect' | 'circle';
+type Tool = 'pen' | 'arrow' | 'rect' | 'circle' | 'image';
+
+interface PlacedImage {
+  img: HTMLImageElement;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  opacity: number;
+}
 
 export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   isOpen,
@@ -38,6 +49,12 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [history, setHistory] = useState<ImageData[]>([]);
 
+  // Placed Watermark / Reference Image State
+  const [placedImage, setPlacedImage] = useState<PlacedImage | null>(null);
+  const [imageOpacity, setImageOpacity] = useState<number>(1);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   const CANVAS_WIDTH = 1920;
   const CANVAS_HEIGHT = 1080;
 
@@ -51,6 +68,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         setHistory([ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)]);
       }
+      setPlacedImage(null);
     }
   }, [isOpen]);
 
@@ -84,26 +102,22 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      setPlacedImage(null);
       saveState();
     }
   };
 
-  // Attach Image / Watermark / Plate onto the canvas
+  // Upload and place watermark image
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !canvasRef.current) return;
+    if (!file) return;
 
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext('2d');
-        if (!canvas || !ctx) return;
-
-        // Scale image reasonably (max 40% of canvas)
-        const maxWidth = CANVAS_WIDTH * 0.45;
-        const maxHeight = CANVAS_HEIGHT * 0.45;
+        const maxWidth = CANVAS_WIDTH * 0.4;
+        const maxHeight = CANVAS_HEIGHT * 0.4;
         let w = img.width;
         let h = img.height;
         if (w > maxWidth || h > maxHeight) {
@@ -112,17 +126,23 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
           h = h * ratio;
         }
 
-        // Draw in center
-        const x = (CANVAS_WIDTH - w) / 2;
-        const y = (CANVAS_HEIGHT - h) / 2;
-        ctx.drawImage(img, x, y, w, h);
-        saveState();
+        const newPlaced: PlacedImage = {
+          img,
+          x: (CANVAS_WIDTH - w) / 2,
+          y: (CANVAS_HEIGHT - h) / 2,
+          w,
+          h,
+          opacity: imageOpacity,
+        };
+        setPlacedImage(newPlaced);
+        setActiveTool('image');
       };
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   };
 
+  // Convert mouse coords to 1920x1080 canvas coords
   const getCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -137,6 +157,22 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
 
   const startDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const coords = getCoords(e);
+
+    // If clicking on placed image in image tool mode
+    if (placedImage) {
+      const insideImage =
+        coords.x >= placedImage.x &&
+        coords.x <= placedImage.x + placedImage.w &&
+        coords.y >= placedImage.y &&
+        coords.y <= placedImage.y + placedImage.h;
+
+      if (insideImage) {
+        setIsDraggingImage(true);
+        setDragOffset({ x: coords.x - placedImage.x, y: coords.y - placedImage.y });
+        return;
+      }
+    }
+
     setIsDrawing(true);
     setStartPos(coords);
 
@@ -153,8 +189,18 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !startPos) return;
     const coords = getCoords(e);
+
+    if (isDraggingImage && placedImage) {
+      setPlacedImage({
+        ...placedImage,
+        x: Math.max(0, Math.min(coords.x - dragOffset.x, CANVAS_WIDTH - placedImage.w)),
+        y: Math.max(0, Math.min(coords.y - dragOffset.y, CANVAS_HEIGHT - placedImage.h)),
+      });
+      return;
+    }
+
+    if (!isDrawing || !startPos) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -186,6 +232,10 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   };
 
   const endDraw = () => {
+    if (isDraggingImage) {
+      setIsDraggingImage(false);
+      return;
+    }
     if (isDrawing) {
       setIsDrawing(false);
       setStartPos(null);
@@ -224,8 +274,26 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const drawingCanvas = canvasRef.current;
     if (!drawingCanvas) return;
 
-    const drawingDataUrl = drawingCanvas.toDataURL('image/png');
+    // Create a composite drawing canvas (lines + placed watermark with opacity)
+    const finalDrawingCanvas = document.createElement('canvas');
+    finalDrawingCanvas.width = CANVAS_WIDTH;
+    finalDrawingCanvas.height = CANVAS_HEIGHT;
+    const fCtx = finalDrawingCanvas.getContext('2d');
 
+    if (fCtx) {
+      // 1. Draw placed image with opacity
+      if (placedImage) {
+        fCtx.globalAlpha = imageOpacity;
+        fCtx.drawImage(placedImage.img, placedImage.x, placedImage.y, placedImage.w, placedImage.h);
+        fCtx.globalAlpha = 1.0;
+      }
+      // 2. Draw user pen/arrow annotations
+      fCtx.drawImage(drawingCanvas, 0, 0);
+    }
+
+    const drawingDataUrl = finalDrawingCanvas.toDataURL('image/png');
+
+    // Create complete frame snapshot (Video Frame + Drawing/Watermark)
     const compositeCanvas = document.createElement('canvas');
     compositeCanvas.width = 640;
     compositeCanvas.height = 360;
@@ -238,7 +306,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         cCtx.fillStyle = '#0b0f17';
         cCtx.fillRect(0, 0, 640, 360);
       }
-      cCtx.drawImage(drawingCanvas, 0, 0, 640, 360);
+      cCtx.drawImage(finalDrawingCanvas, 0, 0, 640, 360);
     }
 
     const snapshotDataUrl = compositeCanvas.toDataURL('image/jpeg', 0.85);
@@ -251,11 +319,11 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       className="absolute inset-0 z-30 flex flex-col bg-black/60 backdrop-blur-[1px] select-none"
     >
       {/* Top Floating Toolbar */}
-      <div className="h-12 bg-[#0c1018]/95 border-b border-[#232d44] px-4 flex items-center justify-between text-white">
+      <div className="h-12 bg-[#0c1018]/95 border-b border-[#232d44] px-4 flex items-center justify-between text-white flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
             <PenTool className="w-3.5 h-3.5" />
-            Freeze Frame Markup & Plate
+            Freeze Frame Markup & Watermark
           </span>
 
           {/* Tools */}
@@ -284,7 +352,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
           </div>
 
           {/* Colors */}
-          <div className="flex items-center gap-1.5 ml-2">
+          <div className="flex items-center gap-1.5 ml-1">
             {['#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#ec4899', '#ffffff'].map(c => (
               <button
                 key={c}
@@ -297,14 +365,45 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
             ))}
           </div>
 
-          {/* Upload Watermark / Reference Image Button */}
-          <label className="cursor-pointer ml-2">
+          {/* Upload Watermark Button */}
+          <label className="cursor-pointer ml-1">
             <div className="px-2.5 py-1 rounded-lg bg-[#1a2336] hover:bg-[#25324d] border border-[#2e3b57] text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 transition">
               <Upload className="w-3 h-3 text-blue-400" />
-              <span>Add Watermark / Image</span>
+              <span>{placedImage ? 'Replace Watermark' : 'Add Watermark / Image'}</span>
             </div>
             <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
           </label>
+
+          {/* Watermark Opacity & Size Controls */}
+          {placedImage && (
+            <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-[#141b29] border border-[#232d44] text-[11px]">
+              <span className="text-slate-400 font-semibold">Opacity:</span>
+              <input
+                type="range"
+                min="0.1"
+                max="1.0"
+                step="0.05"
+                value={imageOpacity}
+                onChange={e => {
+                  const op = parseFloat(e.target.value);
+                  setImageOpacity(op);
+                  if (placedImage) {
+                    setPlacedImage({ ...placedImage, opacity: op });
+                  }
+                }}
+                className="w-20 cursor-pointer accent-blue-500"
+              />
+              <span className="font-mono text-blue-400">{Math.round(imageOpacity * 100)}%</span>
+
+              <button
+                onClick={() => setPlacedImage(null)}
+                className="ml-1 text-slate-500 hover:text-red-400"
+                title="Remove Watermark"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -341,15 +440,35 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         </div>
       </div>
 
-      {/* Canvas Area */}
+      {/* Canvas Area with Draggable Watermark */}
       <div className="flex-1 w-full h-full relative cursor-crosshair overflow-hidden flex items-center justify-center">
+        {/* Render Placed Watermark Image */}
+        {placedImage && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${(placedImage.x / CANVAS_WIDTH) * 100}%`,
+              top: `${(placedImage.y / CANVAS_HEIGHT) * 100}%`,
+              width: `${(placedImage.w / CANVAS_WIDTH) * 100}%`,
+              height: `${(placedImage.h / CANVAS_HEIGHT) * 100}%`,
+              opacity: imageOpacity,
+            }}
+            className="border-2 border-dashed border-blue-400 cursor-move pointer-events-none group z-10"
+          >
+            <img src={placedImage.img.src} alt="Placed Watermark" className="w-full h-full object-contain" />
+            <div className="absolute top-1 right-1 bg-black/70 text-white text-[9px] px-1 rounded flex items-center gap-0.5">
+              <Move className="w-2.5 h-2.5" /> Drag
+            </div>
+          </div>
+        )}
+
         <canvas
           ref={canvasRef}
           onMouseDown={startDraw}
           onMouseMove={draw}
           onMouseUp={endDraw}
           onMouseLeave={endDraw}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-contain z-20"
         />
       </div>
     </div>

@@ -72,6 +72,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const vimeoPlayerARef = useRef<any>(null);
     const vimeoPlayerBRef = useRef<any>(null);
 
+    // HTML5 Compare Dual instances
+    const html5VideoARef = useRef<HTMLVideoElement | null>(null);
+    const html5VideoBRef = useRef<HTMLVideoElement | null>(null);
+
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(120);
@@ -83,12 +87,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     // On-Screen Drawing Overlay state
     const [activeOverlayImage, setActiveOverlayImage] = useState<string | null>(null);
+    const [activeOverlayLabel, setActiveOverlayLabel] = useState<string | null>(null);
     const [showOverlay, setShowOverlay] = useState(true);
 
     // Standalone clock timer
     const standaloneTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Helper: Capture a clean thumbnail still from current video or LCD
+    // Helper: Capture a clean thumbnail still
     const captureThumbnail = (): string => {
       const canvas = document.createElement('canvas');
       canvas.width = 640;
@@ -99,17 +104,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       if (videoRef.current && videoRef.current.videoWidth > 0) {
         ctx.drawImage(videoRef.current, 0, 0, 640, 360);
       } else {
-        // Fallback stylish LCD slate preview for Vimeo/Standalone
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(0, 0, 640, 360);
-        // Header
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(0, 0, 640, 60);
         ctx.fillStyle = '#3b82f6';
         ctx.font = 'bold 20px monospace';
         ctx.fillText(project.name.toUpperCase(), 24, 38);
 
-        // Big Timecode
         const tc = secondsToDisplayTimecode(
           currentTime,
           project.fps,
@@ -121,7 +123,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         ctx.textAlign = 'center';
         ctx.fillText(tc, 320, 200);
 
-        // Subtitle
         ctx.fillStyle = '#94a3b8';
         ctx.font = '16px monospace';
         ctx.fillText(`${project.fps} FPS • ${cut.name}`, 320, 250);
@@ -149,6 +150,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerARef.current?.setCurrentTime(clamped).catch(() => {});
             vimeoPlayerBRef.current?.setCurrentTime(clamped).catch(() => {});
+            if (html5VideoARef.current) html5VideoARef.current.currentTime = clamped;
+            if (html5VideoBRef.current) html5VideoBRef.current.currentTime = clamped;
           } catch (e) {}
         }
       },
@@ -166,6 +169,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerARef.current?.pause().catch(() => {});
             vimeoPlayerBRef.current?.pause().catch(() => {});
+            html5VideoARef.current?.pause();
+            html5VideoBRef.current?.pause();
           } catch (e) {}
         }
         setIsPlaying(false);
@@ -181,6 +186,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerARef.current?.play().catch(() => {});
             vimeoPlayerBRef.current?.play().catch(() => {});
+            html5VideoARef.current?.play();
+            html5VideoBRef.current?.play();
           } catch (e) {}
         }
         setIsPlaying(true);
@@ -190,47 +197,40 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       },
     }));
 
-    // Detect if current time matches a note with drawing or if a note is explicitly selected
+    // STRICT DRAWING OVERLAY LIFECYCLE:
+    // Only display drawing when current time falls strictly in the note's target frame or range!
     useEffect(() => {
-      if (selectedNote && selectedNote.drawingData) {
-        setActiveOverlayImage(selectedNote.drawingData);
-        setShowOverlay(true);
-        return;
-      }
-
-      // Check notes at current playback position (within 1 second window)
-      const currentTc = secondsToDisplayTimecode(
-        currentTime,
+      const startFrames = timecodeToFrames(
+        project.startTimecode || '01:00:00:00',
         project.fps,
-        project.startTimecode,
         project.dropFrame
       );
 
-      const matchingNote = notes.find(n => {
+      const activeNote = notes.find(n => {
         if (!n.drawingData) return false;
         const nFrames = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-        const sFrames = timecodeToFrames(
-          project.startTimecode || '01:00:00:00',
-          project.fps,
-          project.dropFrame
-        );
-        const noteSec = framesToSeconds(Math.max(0, nFrames - sFrames), project.fps);
+        const inSec = framesToSeconds(Math.max(0, nFrames - startFrames), project.fps);
 
         if (n.timecodeOut) {
           const outFrames = timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame);
-          const outSec = framesToSeconds(Math.max(0, outFrames - sFrames), project.fps);
-          return currentTime >= noteSec && currentTime <= outSec;
+          const outSec = framesToSeconds(Math.max(0, outFrames - startFrames), project.fps);
+          return currentTime >= inSec - 0.05 && currentTime <= outSec + 0.05;
         }
 
-        return Math.abs(currentTime - noteSec) < 0.5;
+        // Single frame tolerance (1 frame duration)
+        const oneFrameSec = 1 / project.fps;
+        return Math.abs(currentTime - inSec) <= oneFrameSec * 1.5;
       });
 
-      if (matchingNote && matchingNote.drawingData) {
-        setActiveOverlayImage(matchingNote.drawingData);
-      } else if (!selectedNote) {
+      if (activeNote && activeNote.drawingData) {
+        setActiveOverlayImage(activeNote.drawingData);
+        setActiveOverlayLabel(`${activeNote.timecode} - ${activeNote.presetLabel}`);
+      } else {
+        // Automatically hide overlay when playhead moves outside frame/range
         setActiveOverlayImage(null);
+        setActiveOverlayLabel(null);
       }
-    }, [currentTime, selectedNote, notes, project]);
+    }, [currentTime, notes, project]);
 
     // Toggle Play/Pause across all modes
     const togglePlayback = () => {
@@ -259,10 +259,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           if (isPlaying) {
             vimeoPlayerARef.current?.pause().catch(() => {});
             vimeoPlayerBRef.current?.pause().catch(() => {});
+            html5VideoARef.current?.pause();
+            html5VideoBRef.current?.pause();
             setIsPlaying(false);
           } else {
             vimeoPlayerARef.current?.play().catch(() => {});
             vimeoPlayerBRef.current?.play().catch(() => {});
+            html5VideoARef.current?.play();
+            html5VideoBRef.current?.play();
             setIsPlaying(true);
           }
         } catch (e) {}
@@ -345,23 +349,20 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     }, [cut.provider, cut.videoUrl]);
 
-    // Compare Mode: Dual Vimeo Instances Loader
+    // Compare Mode: Dual Vimeo / Local Instances Loader
+    const isVimeoA = Boolean(cut.videoUrl?.includes('vimeo.com'));
+    const isVimeoB = Boolean(cut.videoUrlB?.includes('vimeo.com'));
+
     useEffect(() => {
       let isMounted = true;
 
-      if (
-        cut.provider === 'compare' &&
-        vimeoCompareContainerARef.current &&
-        vimeoCompareContainerBRef.current &&
-        cut.videoUrl &&
-        cut.videoUrlB
-      ) {
-        vimeoCompareContainerARef.current.innerHTML = '';
-        vimeoCompareContainerBRef.current.innerHTML = '';
+      if (cut.provider === 'compare' && isVimeoA && isVimeoB && cut.videoUrl && cut.videoUrlB) {
+        if (vimeoCompareContainerARef.current) vimeoCompareContainerARef.current.innerHTML = '';
+        if (vimeoCompareContainerBRef.current) vimeoCompareContainerBRef.current.innerHTML = '';
 
         import('@vimeo/player')
           .then(module => {
-            if (!isMounted) return;
+            if (!isMounted || !vimeoCompareContainerARef.current || !vimeoCompareContainerBRef.current) return;
             const Vimeo = module.default || module;
 
             const playerA = new (Vimeo as any)(vimeoCompareContainerARef.current, {
@@ -418,7 +419,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             });
           })
           .catch(err => {
-            console.error('Compare Vimeo SDK error:', err);
+            console.error('Compare Vimeo error:', err);
           });
 
         return () => {
@@ -429,7 +430,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           } catch (e) {}
         };
       }
-    }, [cut.provider, cut.videoUrl, cut.videoUrlB]);
+    }, [cut.provider, cut.videoUrl, cut.videoUrlB, isVimeoA, isVimeoB]);
 
     // Local HTML5 Video Events
     const handleHtml5TimeUpdate = () => {
@@ -469,9 +470,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         try {
           vimeoPlayerARef.current?.pause().catch(() => {});
           vimeoPlayerBRef.current?.pause().catch(() => {});
+          html5VideoARef.current?.pause();
+          html5VideoBRef.current?.pause();
           setIsPlaying(false);
           vimeoPlayerARef.current?.setCurrentTime(targetTime).catch(() => {});
           vimeoPlayerBRef.current?.setCurrentTime(targetTime).catch(() => {});
+          if (html5VideoARef.current) html5VideoARef.current.currentTime = targetTime;
+          if (html5VideoBRef.current) html5VideoBRef.current.currentTime = targetTime;
         } catch (e) {}
       } else {
         setCurrentTime(targetTime);
@@ -555,10 +560,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       : 'hidden'
                   }`}
                 >
-                  <div
-                    ref={vimeoCompareContainerARef}
-                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
-                  />
+                  {isVimeoA ? (
+                    <div
+                      ref={vimeoCompareContainerARef}
+                      className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
+                    />
+                  ) : (
+                    <video
+                      ref={html5VideoARef}
+                      src={cut.videoUrl}
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  )}
                   <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-blue-600/80 text-white text-[10px] font-bold z-20">
                     Clip A (Cut 1)
                   </span>
@@ -574,10 +588,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       : 'hidden'
                   }`}
                 >
-                  <div
-                    ref={vimeoCompareContainerBRef}
-                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
-                  />
+                  {isVimeoB ? (
+                    <div
+                      ref={vimeoCompareContainerBRef}
+                      className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
+                    />
+                  ) : (
+                    <video
+                      ref={html5VideoBRef}
+                      src={cut.videoUrlB}
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  )}
                   <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-purple-600/80 text-white text-[10px] font-bold z-20">
                     Clip B (Compare)
                   </span>
@@ -698,19 +721,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
           )}
 
-          {/* ACTIVE ON-SCREEN DRAWING OVERLAY LAYER */}
+          {/* ACTIVE ON-SCREEN DRAWING OVERLAY LAYER (Strictly on target frame or range) */}
           {activeOverlayImage && showOverlay && (
-            <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center animate-in fade-in">
+            <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center animate-in fade-in duration-100">
               <img
                 src={activeOverlayImage}
                 alt="Frame Markup"
                 className="w-full h-full object-contain pointer-events-none"
               />
 
-              {/* Overlay Indicator Badge with Toggle */}
+              {/* Overlay Indicator Badge */}
               <div className="absolute bottom-3 left-3 bg-[#0d121c]/90 backdrop-blur-md border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-2 pointer-events-auto">
                 <PenTool className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <span>Frame Drawing Active</span>
+                <span>{activeOverlayLabel || 'Frame Drawing Active'}</span>
                 <button
                   onClick={() => setShowOverlay(!showOverlay)}
                   className="p-1 text-slate-400 hover:text-white transition"

@@ -139,14 +139,24 @@ export default function Home() {
     }
   };
 
-  // Apply Compare Mode
-  const handleApplyCompare = async (urlA: string, urlB: string) => {
+  // Apply Compare Mode (URLs, Local Files, Project Cuts)
+  const handleApplyCompare = async (urlA: string, urlB: string, fileA?: File, fileB?: File) => {
     if (!activeCut) return;
+    let finalUrlA = urlA;
+    let finalUrlB = urlB;
+
+    if (fileA) {
+      finalUrlA = await saveLocalVideoFile(`${activeCut.id}_a`, fileA);
+    }
+    if (fileB) {
+      finalUrlB = await saveLocalVideoFile(`${activeCut.id}_b`, fileB);
+    }
+
     const updatedCut: Cut = {
       ...activeCut,
       provider: 'compare',
-      videoUrl: urlA,
-      videoUrlB: urlB,
+      videoUrl: finalUrlA,
+      videoUrlB: finalUrlB,
     };
     await saveCut(updatedCut);
     setActiveCut(updatedCut);
@@ -312,7 +322,7 @@ export default function Home() {
       frameOutNum = timecodeToFrames(tcOut, activeProject.fps, activeProject.dropFrame);
     }
 
-    // Auto capture frame thumbnail if not already provided
+    // Auto capture frame thumbnail
     let finalThumbnail = data.stillImageUrl || activeDrawingSnapshot;
     if (!finalThumbnail && videoPlayerRef.current) {
       finalThumbnail = videoPlayerRef.current.captureFrameThumbnail();
@@ -496,7 +506,7 @@ export default function Home() {
 
           {/* 2-Column Studio Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
-            {/* Left / Center Column (Player + Timeline + Presets): 7 cols */}
+            {/* Left / Center Column: 7 cols */}
             <div className="lg:col-span-7 flex flex-col gap-4">
               {/* Video Player Box with Freeze-frame Drawing */}
               <div className="relative">
@@ -519,7 +529,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* On-Screen Freeze-Frame Drawing Canvas */}
+                {/* On-Screen Freeze-Frame Drawing Canvas with Draggable Watermark & Opacity */}
                 {isDrawingOpen && (
                   <AnnotationCanvas
                     isOpen={isDrawingOpen}

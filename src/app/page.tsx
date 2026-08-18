@@ -676,6 +676,8 @@ export default function Home() {
           onClose={() => setIsShareOpen(false)}
           project={activeProject}
           cut={activeCut}
+          notes={notes}
+          branding={branding}
         />
       )}
 

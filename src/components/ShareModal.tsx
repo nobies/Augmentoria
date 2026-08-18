@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Share2, Copy, Check, Shield, Eye, Globe } from 'lucide-react';
-import { Project, Cut } from '@/lib/supabase';
+import { X, Share2, Copy, Check, Shield, Eye, Globe, ExternalLink } from 'lucide-react';
+import { Project, Cut, ReviewNote, StudioBranding } from '@/lib/supabase';
 
 export interface SharePermissions {
   canComment: boolean;
@@ -18,9 +18,11 @@ interface ShareModalProps {
   onClose: () => void;
   project: Project;
   cut: Cut;
+  notes?: ReviewNote[];
+  branding?: StudioBranding;
 }
 
-// Browser-safe URL-safe base64 encoder
+// Browser-safe URL-safe base64 encoder with UTF-8 support
 function encodeToken(obj: any): string {
   try {
     const jsonStr = JSON.stringify(obj);
@@ -38,6 +40,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   onClose,
   project,
   cut,
+  notes = [],
+  branding,
 }) => {
   const [permissions, setPermissions] = useState<SharePermissions>({
     canComment: true,
@@ -52,9 +56,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Fully portable self-contained payload that works across any browser (Chrome, Edge, Safari, Mobile)
   const payload = {
     projectId: project.id,
     cutId: cut.id,
+    project: {
+      id: project.id,
+      name: project.name,
+      fps: project.fps,
+      dropFrame: project.dropFrame,
+      startTimecode: project.startTimecode,
+    },
+    cut: {
+      id: cut.id,
+      projectId: cut.projectId,
+      name: cut.name,
+      provider: cut.provider,
+      videoUrl: cut.videoUrl,
+      videoUrlB: cut.videoUrlB,
+      durationSeconds: cut.durationSeconds,
+    },
+    notes: (notes || []).map(n => ({
+      id: n.id,
+      cutId: n.cutId,
+      category: n.category,
+      presetLabel: n.presetLabel,
+      text: n.text,
+      frameNumber: n.frameNumber,
+      timecode: n.timecode,
+      timecodeOut: n.timecodeOut,
+      frameOut: n.frameOut,
+      drawingData: n.drawingData,
+      colorGrade: n.colorGrade,
+      stillImageUrl: n.stillImageUrl,
+      authorName: n.authorName,
+      isResolved: n.isResolved,
+    })),
+    branding: branding || { name: 'Studio', tagline: 'Post-Production Suite' },
     p: permissions,
     created: Date.now(),
   };
@@ -113,16 +151,27 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           <div>
             <h2 className="text-base font-bold text-white">Share Review Link</h2>
             <p className="text-xs text-slate-400">
-              Passwordless magic link for clients & reviewers with custom permissions.
+              Passwordless magic link for clients & reviewers. Works across all browsers and devices.
             </p>
           </div>
         </div>
 
         {/* Link Box */}
         <div className="mb-5">
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-            <Globe className="w-3.5 h-3.5 text-blue-400" />
-            <span>Client Review URL</span>
+          <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-blue-400" />
+              <span>Client Review URL</span>
+            </span>
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <span>Test Link</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </label>
           <div className="flex items-center gap-2">
             <input

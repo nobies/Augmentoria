@@ -118,33 +118,58 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
 
         if (decoded.p) setPermissions(decoded.p);
 
-        const b = await getStudioBranding();
-        setBranding(b);
+        // 1. Branding (from token or local fallback)
+        if (decoded.branding) {
+          setBranding(decoded.branding);
+        } else {
+          const b = await getStudioBranding();
+          setBranding(b);
+        }
 
-        const projs = await getAllProjects();
-        const foundProj = projs.find(p => p.id === decoded.projectId) || projs[0];
+        // 2. Project (from token payload if provided, or from local storage)
+        let foundProj: Project | null = null;
+        if (decoded.project) {
+          foundProj = decoded.project;
+        } else {
+          const projs = await getAllProjects();
+          foundProj = projs.find(p => p.id === decoded.projectId) || projs[0] || null;
+        }
+
         if (!foundProj) {
           setError('Project not found or review link has expired.');
           setLoading(false);
           return;
         }
-
         setProject(foundProj);
-        const pCuts = await getCutsForProject(foundProj.id);
-        const foundCut = pCuts.find(c => c.id === decoded.cutId) || pCuts[0];
+
+        // 3. Cut (from token payload if provided, or from local storage)
+        let foundCut: Cut | null = null;
+        if (decoded.cut) {
+          foundCut = decoded.cut;
+        } else {
+          const pCuts = await getCutsForProject(foundProj.id);
+          foundCut = pCuts.find(c => c.id === decoded.cutId) || pCuts[0] || null;
+        }
 
         if (!foundCut) {
           setError('Cut not found.');
           setLoading(false);
           return;
         }
-
         setCut(foundCut);
-        const vUrl = await getLocalVideoBlobUrl(foundCut.id);
-        setLocalVideoUrl(vUrl);
 
-        const nts = await getNotesForCut(foundCut.id);
-        setNotes(nts);
+        // Try local video blob URL if local file
+        const vUrl = await getLocalVideoBlobUrl(foundCut.id);
+        if (vUrl) setLocalVideoUrl(vUrl);
+
+        // 4. Notes (from token payload if provided, or from local storage)
+        if (decoded.notes && Array.isArray(decoded.notes)) {
+          setNotes(decoded.notes);
+        } else {
+          const nts = await getNotesForCut(foundCut.id);
+          setNotes(nts);
+        }
+
         setLoading(false);
       } catch (e: any) {
         setError('Invalid or corrupted review link.');

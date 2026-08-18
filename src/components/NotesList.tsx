@@ -14,6 +14,8 @@ import {
   ExternalLink,
   PenTool,
   Film,
+  Palette,
+  Sparkles,
 } from 'lucide-react';
 import { ReviewNote } from '@/lib/supabase';
 
@@ -80,70 +82,62 @@ export const NotesList: React.FC<NotesListProps> = ({
       <div className="p-2.5 border-b border-[#1e273b] bg-[#111724] space-y-2 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-bold text-white uppercase tracking-wider">Review Notes</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#1b2336] text-blue-400 font-bold">
+            <span className="text-xs font-bold text-white uppercase tracking-wider">Review Notes</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-mono font-bold">
               {notes.length}
             </span>
           </div>
 
-          {/* Quick counts */}
-          <div className="flex items-center gap-1 text-[9px] font-mono">
-            <span className="text-blue-400">E:{notes.filter(n => n.category === 'editorial').length}</span>
-            <span>•</span>
-            <span className="text-purple-400">V:{notes.filter(n => n.category === 'vfx').length}</span>
-            <span>•</span>
-            <span className="text-orange-400">C:{notes.filter(n => n.category === 'color').length}</span>
-            <span>•</span>
-            <span className="text-emerald-400">S:{notes.filter(n => n.category === 'sound').length}</span>
+          <div className="flex items-center gap-1">
+            {['all', 'editorial', 'vfx', 'color', 'sound'].map(cat => (
+              <button
+                key={cat}
+                onClick={() => setFilterCat(cat)}
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition ${
+                  filterCat === cat
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-[#182133] text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {cat === 'all' ? 'All' : cat}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Search & Filter bar */}
-        <div className="flex items-center gap-1.5">
-          <div className="relative flex-1">
-            <Search className="w-3 h-3 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search..."
-              className="w-full pl-7 pr-2 py-1 rounded-lg bg-[#090c13] border border-[#1e273b] text-[11px] text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
-            />
-          </div>
-
-          <select
-            value={filterCat}
-            onChange={e => setFilterCat(e.target.value)}
-            className="bg-[#090c13] border border-[#1e273b] rounded-lg px-2 py-1 text-[10px] font-bold text-slate-300 capitalize focus:outline-none"
-          >
-            {['all', 'editorial', 'vfx', 'color', 'sound'].map(c => (
-              <option key={c} value={c} className="bg-[#111724]">
-                {c}
-              </option>
-            ))}
-          </select>
+        {/* Search input */}
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search notes, timecodes, keywords..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1 rounded-xl bg-[#090d14] border border-[#1e273b] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+          />
         </div>
       </div>
 
-      {/* Scrollable Notes List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
+      {/* Notes List with Scroll */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#1e273b] scrollbar-track-transparent">
         {filteredNotes.length === 0 ? (
-          <div className="h-36 flex flex-col items-center justify-center text-center p-3 text-slate-500">
-            <Filter className="w-6 h-6 mb-1 opacity-40" />
-            <p className="text-[11px] font-semibold">No notes recorded yet</p>
-            <p className="text-[10px] text-slate-600 mt-0.5">Click preset keys or type comments to log review notes.</p>
+          <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500 space-y-2">
+            <Filter className="w-8 h-8 opacity-30 text-blue-400" />
+            <p className="text-xs font-medium">No notes match current filter</p>
           </div>
         ) : (
           filteredNotes.map(n => {
             const isSelected = selectedNoteId === n.id;
             const catBadgeClass =
               n.category === 'editorial'
-                ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                 : n.category === 'vfx'
-                ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                 : n.category === 'color'
-                ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
-                : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+                ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                : n.category === 'sound'
+                ? 'bg-pink-500/10 text-pink-400 border-pink-500/30'
+                : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
 
             return (
               <div
@@ -175,8 +169,13 @@ export const NotesList: React.FC<NotesListProps> = ({
                     )}
 
                     {n.drawingData && (
-                      <div className="absolute bottom-0.5 right-0.5 p-0.5 rounded bg-amber-500 text-black text-[8px]">
+                      <div className="absolute bottom-0.5 right-0.5 p-0.5 rounded bg-amber-500 text-black text-[8px]" title="Drawing Markup">
                         <PenTool className="w-2 h-2" />
+                      </div>
+                    )}
+                    {n.colorGrade && (
+                      <div className="absolute bottom-0.5 left-0.5 p-0.5 rounded bg-purple-600 text-white text-[8px]" title="Color Grade Attached">
+                        <Palette className="w-2 h-2" />
                       </div>
                     )}
                   </div>
@@ -257,6 +256,16 @@ export const NotesList: React.FC<NotesListProps> = ({
                         >
                           <Edit2 className="w-2.5 h-2.5" />
                         </button>
+                      </div>
+                    )}
+
+                    {/* Color Grade Look Badge */}
+                    {n.colorGrade && (
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-950/40 border border-purple-500/30 text-purple-300 text-[9px] mt-0.5 w-fit">
+                        <Sparkles className="w-2.5 h-2.5 text-purple-400" />
+                        <span className="font-bold">
+                          {n.colorGrade.preset !== 'none' ? `Look: ${n.colorGrade.preset}` : 'Color Correction'}
+                        </span>
                       </div>
                     )}
 

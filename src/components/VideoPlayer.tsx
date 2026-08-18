@@ -15,7 +15,6 @@ import {
   Video,
   Tv,
 } from 'lucide-react';
-import VimeoPlayer from '@vimeo/player';
 import { Cut, Project } from '@/lib/supabase';
 import { secondsToDisplayTimecode } from '@/lib/timecode';
 
@@ -45,7 +44,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   ) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const vimeoContainerRef = useRef<HTMLDivElement | null>(null);
-    const vimeoPlayerInstanceRef = useRef<VimeoPlayer | null>(null);
+    const vimeoPlayerInstanceRef = useRef<any>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -68,7 +67,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             videoRef.current.currentTime = clamped;
           }
         } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
-          vimeoPlayerInstanceRef.current.setCurrentTime(clamped).catch(() => {});
+          try {
+            vimeoPlayerInstanceRef.current.setCurrentTime(clamped).catch(() => {});
+          } catch (e) {}
         }
       },
       getVideoElement: () => videoRef.current,
@@ -77,7 +78,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         if (cut.provider === 'local' || cut.provider === 'drive') {
           if (videoRef.current) videoRef.current.pause();
         } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
-          vimeoPlayerInstanceRef.current.pause().catch(() => {});
+          try {
+            vimeoPlayerInstanceRef.current.pause().catch(() => {});
+          } catch (e) {}
         }
         setIsPlaying(false);
       },
@@ -85,7 +88,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         if (cut.provider === 'local' || cut.provider === 'drive') {
           if (videoRef.current) videoRef.current.play();
         } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
-          vimeoPlayerInstanceRef.current.play().catch(() => {});
+          try {
+            vimeoPlayerInstanceRef.current.play().catch(() => {});
+          } catch (e) {}
         }
         setIsPlaying(true);
       },
@@ -107,72 +112,95 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           }
         }
       } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
-        if (isPlaying) {
-          vimeoPlayerInstanceRef.current.pause().catch(() => {});
-          setIsPlaying(false);
-        } else {
-          vimeoPlayerInstanceRef.current.play().catch(() => {});
-          setIsPlaying(true);
-        }
+        try {
+          if (isPlaying) {
+            vimeoPlayerInstanceRef.current.pause().catch(() => {});
+            setIsPlaying(false);
+          } else {
+            vimeoPlayerInstanceRef.current.play().catch(() => {});
+            setIsPlaying(true);
+          }
+        } catch (e) {}
       } else if (cut.provider === 'standalone') {
         setIsPlaying(!isPlaying);
       }
     };
 
-    // Initialize Vimeo Player SDK
+    // Dynamically load & init Vimeo Player SDK on client
     useEffect(() => {
+      let isMounted = true;
+
       if (cut.provider === 'vimeo' && vimeoContainerRef.current && cut.videoUrl) {
-        // Destroy previous instance if any
         if (vimeoPlayerInstanceRef.current) {
-          vimeoPlayerInstanceRef.current.destroy().catch(() => {});
+          try {
+            vimeoPlayerInstanceRef.current.destroy().catch(() => {});
+          } catch (e) {}
         }
 
         vimeoContainerRef.current.innerHTML = '';
 
-        try {
-          const player = new VimeoPlayer(vimeoContainerRef.current, {
-            url: cut.videoUrl as any,
-            responsive: true,
-            autoplay: false,
-            controls: false, // We control playback via our professional studio transport
+        import('@vimeo/player')
+          .then(module => {
+            if (!isMounted || !vimeoContainerRef.current) return;
+            const Vimeo = module.default || module;
+            const player = new (Vimeo as any)(vimeoContainerRef.current, {
+              url: cut.videoUrl,
+              responsive: true,
+              autoplay: false,
+              controls: false,
+            });
+
+            vimeoPlayerInstanceRef.current = player;
+
+            player.on('loaded', async () => {
+              try {
+                const d = await player.getDuration();
+                if (isMounted) {
+                  setDuration(d);
+                  onDurationChange(d);
+                }
+              } catch (e) {}
+            });
+
+            player.on('play', () => {
+              if (isMounted) setIsPlaying(true);
+            });
+
+            player.on('pause', () => {
+              if (isMounted) setIsPlaying(false);
+            });
+
+            player.on('timeupdate', (data: { seconds: number; duration: number }) => {
+              if (isMounted) {
+                setCurrentTime(data.seconds);
+                onTimeUpdate(data.seconds);
+                if (data.duration && data.duration > 0) {
+                  setDuration(data.duration);
+                  onDurationChange(data.duration);
+                }
+              }
+            });
+
+            player.on('ended', () => {
+              if (isMounted) setIsPlaying(false);
+            });
+          })
+          .catch(err => {
+            console.error('Failed to dynamically load Vimeo SDK:', err);
           });
-
-          vimeoPlayerInstanceRef.current = player;
-
-          player.on('loaded', async () => {
-            try {
-              const d = await player.getDuration();
-              setDuration(d);
-              onDurationChange(d);
-            } catch (e) {}
-          });
-
-          player.on('play', () => setIsPlaying(true));
-          player.on('pause', () => setIsPlaying(false));
-
-          player.on('timeupdate', (data: { seconds: number; duration: number }) => {
-            setCurrentTime(data.seconds);
-            onTimeUpdate(data.seconds);
-            if (data.duration && data.duration > 0) {
-              setDuration(data.duration);
-              onDurationChange(data.duration);
-            }
-          });
-
-          player.on('ended', () => setIsPlaying(false));
-        } catch (err) {
-          console.error('Failed to init Vimeo Player:', err);
-        }
 
         return () => {
+          isMounted = false;
           if (vimeoPlayerInstanceRef.current) {
-            vimeoPlayerInstanceRef.current.destroy().catch(() => {});
+            try {
+              vimeoPlayerInstanceRef.current.destroy().catch(() => {});
+            } catch (e) {}
           }
         };
       }
     }, [cut.provider, cut.videoUrl]);
 
-    // Local Video Events
+    // Local HTML5 Video Events
     const handleHtml5TimeUpdate = () => {
       if (videoRef.current) {
         const t = videoRef.current.currentTime;
@@ -201,9 +229,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           videoRef.current.currentTime = targetTime;
         }
       } else if (cut.provider === 'vimeo' && vimeoPlayerInstanceRef.current) {
-        vimeoPlayerInstanceRef.current.pause().catch(() => {});
-        setIsPlaying(false);
-        vimeoPlayerInstanceRef.current.setCurrentTime(targetTime).catch(() => {});
+        try {
+          vimeoPlayerInstanceRef.current.pause().catch(() => {});
+          setIsPlaying(false);
+          vimeoPlayerInstanceRef.current.setCurrentTime(targetTime).catch(() => {});
+        } catch (e) {}
       } else {
         setCurrentTime(targetTime);
         onTimeUpdate(targetTime);
@@ -292,12 +322,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               </div>
             )
           ) : cut.provider === 'vimeo' ? (
-            <div className="w-full h-full relative flex items-center justify-center">
+            <div className="w-full h-full relative flex items-center justify-center bg-black">
               <div ref={vimeoContainerRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
-              {/* Invisible Overlay to capture clicks and route to studio transport */}
+              {/* Overlay Click-to-Play/Pause */}
               <div
                 onClick={togglePlayback}
-                className="absolute inset-0 cursor-pointer pointer-events-auto bg-transparent"
+                className="absolute inset-0 cursor-pointer pointer-events-auto bg-transparent z-10"
               />
             </div>
           ) : cut.provider === 'youtube' ? (
@@ -426,7 +456,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   videoRef.current.muted = !isMuted;
                   setIsMuted(!isMuted);
                 } else if (vimeoPlayerInstanceRef.current) {
-                  vimeoPlayerInstanceRef.current.setMuted(!isMuted).catch(() => {});
+                  try {
+                    vimeoPlayerInstanceRef.current.setMuted(!isMuted).catch(() => {});
+                  } catch (e) {}
                   setIsMuted(!isMuted);
                 }
               }}
@@ -440,7 +472,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 if (videoRef.current?.requestFullscreen) {
                   videoRef.current.requestFullscreen();
                 } else if (vimeoPlayerInstanceRef.current) {
-                  vimeoPlayerInstanceRef.current.requestFullscreen().catch(() => {});
+                  try {
+                    vimeoPlayerInstanceRef.current.requestFullscreen().catch(() => {});
+                  } catch (e) {}
                 }
               }}
               className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"

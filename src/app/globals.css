@@ -1,25 +1,23 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --bg-main: #0a0d14;
-  --bg-surface: #111520;
-  --bg-card: #161b28;
-  --bg-elevated: #1e2536;
-  --border-subtle: #242c40;
-  --border-strong: #333e5a;
+  --bg-main: #090c13;
+  --bg-surface: #111724;
+  --bg-card: #141b29;
+  --bg-elevated: #1a2233;
+  --border-subtle: #20293d;
+  --border-strong: #2e3b57;
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   --accent-blue: #3b82f6;
-  --accent-editorial: #3b82f6;
-  --accent-vfx: #a855f7;
-  --accent-color: #f97316;
-  --accent-sound: #10b981;
 }
 
 body {
-  background-color: var(--bg-main);
-  color: var(--text-primary);
+  background-color: #090c13;
+  color: #f1f5f9;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   margin: 0;
   padding: 0;
@@ -32,14 +30,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f131c;
+  background: #0b0e16;
 }
 ::-webkit-scrollbar-thumb {
-  background: #252d42;
+  background: #1e273b;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3b4666;
+  background: #334155;
 }
 
 /* Timecode Display glow */
@@ -48,14 +46,4 @@ body {
   letter-spacing: 0.08em;
   font-feature-settings: 'tnum';
   font-variant-numeric: tabular-nums;
-}
-
-/* Custom waveform animation */
-@keyframes pulse-wave {
-  0%, 100% { transform: scaleY(0.4); }
-  50% { transform: scaleY(1); }
-}
-
-.wave-bar {
-  animation: pulse-wave 1.2s infinite ease-in-out;
 }

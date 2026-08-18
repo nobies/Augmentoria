@@ -6,11 +6,7 @@ import {
   Sparkles,
   Palette,
   Volume2,
-  PenTool,
-  Mic,
   Send,
-  Image as ImageIcon,
-  Upload,
 } from 'lucide-react';
 
 export interface CategoryPreset {
@@ -117,13 +113,10 @@ interface PresetKeysProps {
     audioBlob?: Blob;
     drawingData?: string;
   }) => void;
-  onStartDrawing: () => void;
-  onStartVoiceRecording: () => void;
   activeDrawingSnapshot: string | null;
   activeAudioBlob: Blob | null;
   onClearDrawingSnapshot: () => void;
   onClearAudioBlob: () => void;
-  onAttachImageSnapshot: (dataUrl: string) => void;
 }
 
 export const PresetKeys: React.FC<PresetKeysProps> = ({
@@ -132,13 +125,10 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
   outTc,
   onClearRange,
   onAddNote,
-  onStartDrawing,
-  onStartVoiceRecording,
   activeDrawingSnapshot,
   activeAudioBlob,
   onClearDrawingSnapshot,
   onClearAudioBlob,
-  onAttachImageSnapshot,
 }) => {
   const [activeCategory, setActiveCategory] = useState<'editorial' | 'vfx' | 'color' | 'sound'>('editorial');
   const [customText, setCustomText] = useState('');
@@ -170,23 +160,12 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
     setCustomText('');
   };
 
-  const handleDirectImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        onAttachImageSnapshot(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   return (
-    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-4 flex flex-col gap-3 shadow-2xl">
-      {/* Top Header: Department Tabs & Active Timecode Display */}
-      <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[#1d2538] pb-3">
+    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-3 flex flex-col gap-2.5 shadow-2xl shrink-0">
+      {/* Category Tabs & Active Range/TC */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
         {/* Category Tabs */}
-        <div className="flex items-center gap-1.5 bg-[#0b0f17] p-1 rounded-xl border border-[#1e273b]">
+        <div className="flex items-center gap-1 bg-[#0b0f17] p-0.5 rounded-lg border border-[#1e273b]">
           {PRESET_CATEGORIES.map(cat => {
             const CatIcon = cat.icon;
             const isSelected = activeCategory === cat.id;
@@ -197,29 +176,29 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
                   setActiveCategory(cat.id as any);
                   setSelectedKey('Flag');
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
                   isSelected
                     ? cat.id === 'editorial'
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40'
+                      ? 'bg-blue-600 text-white shadow'
                       : cat.id === 'vfx'
-                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
+                      ? 'bg-purple-600 text-white shadow'
                       : cat.id === 'color'
-                      ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40'
-                      : 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40'
+                      ? 'bg-orange-600 text-white shadow'
+                      : 'bg-emerald-600 text-white shadow'
                     : 'text-slate-400 hover:text-white hover:bg-[#151c2c]'
                 }`}
               >
-                <CatIcon className="w-3.5 h-3.5" />
+                <CatIcon className="w-3 h-3" />
                 <span>{cat.name}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Current Timecode & Range info */}
-        <div className="flex items-center gap-2">
+        {/* Current Timecode / In-Out Range indicator */}
+        <div className="flex items-center gap-1.5">
           {inTc && (
-            <div className="flex items-center gap-1 text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            <div className="flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
               <span>IN: {inTc}</span>
               {outTc && <span>→ OUT: {outTc}</span>}
               <button
@@ -231,50 +210,47 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
               </button>
             </div>
           )}
-          <div className="text-xs font-mono font-black px-3 py-1 rounded-lg bg-[#161e2e] border border-[#26334d] text-blue-400 tracking-wider">
+          <div className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded bg-[#161e2e] border border-[#26334d] text-blue-400">
             {currentTc}
           </div>
         </div>
       </div>
 
-      {/* Preset Action Keys Grid (Dropmedia 72px Tactile Console Buttons) */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+      {/* Preset Action Keys (Compact 36px Height Buttons) */}
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
         {currentCategoryObj.keys.map(k => {
           const isSelected = selectedKey === k;
           return (
             <button
               key={k}
               onClick={() => handleKeyClick(k)}
-              className={`h-[68px] rounded-xl border px-3 text-center text-xs font-bold leading-snug transition-all active:scale-95 flex items-center justify-center relative overflow-hidden group ${
+              className={`h-9 rounded-lg border px-2 text-center text-[11px] font-bold transition active:scale-95 flex items-center justify-center ${
                 isSelected
-                  ? 'bg-blue-600/25 border-blue-400 text-white shadow-xl shadow-blue-900/20'
+                  ? 'bg-blue-600/25 border-blue-400 text-white shadow'
                   : 'bg-[#141b29] border-[#222c42] text-slate-200 hover:bg-[#1c2438] hover:border-slate-500 hover:text-white'
               }`}
-              title={`Click to stamp [${k}] at ${currentTc}`}
+              title={`Stamp [${k}] at ${currentTc}`}
             >
               <span>{k}</span>
-              <span className="absolute bottom-1 right-1.5 text-[9px] text-slate-500 opacity-0 group-hover:opacity-100 font-mono">
-                Stamp
-              </span>
             </button>
           );
         })}
       </div>
 
-      {/* Custom Comment & Media Input Bar */}
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 pt-2 border-t border-[#1d2538]">
+      {/* Quick Custom Comment Form */}
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 pt-1">
         {/* Drawing Snapshot Badge */}
         {activeDrawingSnapshot && (
           <div className="relative group shrink-0">
             <img
               src={activeDrawingSnapshot}
-              alt="Attached Image/Drawing"
-              className="w-10 h-10 object-cover rounded-lg border border-amber-500 shadow"
+              alt="Attached Drawing"
+              className="w-8 h-8 object-cover rounded-lg border border-amber-500 shadow"
             />
             <button
               type="button"
               onClick={onClearDrawingSnapshot}
-              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center shadow"
+              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white text-[9px] flex items-center justify-center"
             >
               ×
             </button>
@@ -283,73 +259,27 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
 
         {/* Voice Note Badge */}
         {activeAudioBlob && (
-          <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-bold shrink-0">
-            <Mic className="w-4 h-4 animate-pulse text-red-400" />
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-bold shrink-0">
             <span>Voice Clip</span>
-            <button
-              type="button"
-              onClick={onClearAudioBlob}
-              className="ml-1 text-slate-400 hover:text-white"
-            >
+            <button type="button" onClick={onClearAudioBlob} className="ml-1 text-slate-400 hover:text-white">
               ×
             </button>
           </div>
         )}
 
-        {/* Text Input */}
         <input
           type="text"
           value={customText}
           onChange={e => setCustomText(e.target.value)}
-          placeholder={`Type comment for timestamp ${currentTc}...`}
-          className="flex-1 px-4 py-2.5 rounded-xl bg-[#090d14] border border-[#222c42] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
+          placeholder={`Type custom comment for timestamp ${currentTc}...`}
+          className="flex-1 px-3 py-1.5 rounded-xl bg-[#090d14] border border-[#222c42] text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
         />
 
-        {/* Draw on Freeze Frame Button */}
-        <button
-          type="button"
-          onClick={onStartDrawing}
-          className={`p-2.5 rounded-xl border transition active:scale-95 ${
-            activeDrawingSnapshot
-              ? 'bg-amber-500/25 border-amber-500 text-amber-400'
-              : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:text-amber-400 hover:border-amber-500/40'
-          }`}
-          title="Draw on freeze-frame"
-        >
-          <PenTool className="w-4 h-4" />
-        </button>
-
-        {/* Attach Watermark / Reference Image File */}
-        <label className="cursor-pointer">
-          <div
-            className="p-2.5 rounded-xl bg-[#151b29] hover:bg-[#1f2a40] border border-[#222c42] text-slate-300 hover:text-blue-400 transition"
-            title="Attach Watermark or Reference Image"
-          >
-            <ImageIcon className="w-4 h-4" />
-          </div>
-          <input type="file" accept="image/*" onChange={handleDirectImageUpload} className="hidden" />
-        </label>
-
-        {/* Record Voice Note Button */}
-        <button
-          type="button"
-          onClick={onStartVoiceRecording}
-          className={`p-2.5 rounded-xl border transition active:scale-95 ${
-            activeAudioBlob
-              ? 'bg-red-500/25 border-red-500 text-red-400'
-              : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:text-red-400 hover:border-red-500/40'
-          }`}
-          title="Record voice comment"
-        >
-          <Mic className="w-4 h-4" />
-        </button>
-
-        {/* Add Note Button */}
         <button
           type="submit"
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/30 transition active:scale-95 shrink-0"
+          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow transition active:scale-95 shrink-0"
         >
-          <Send className="w-3.5 h-3.5" />
+          <Send className="w-3 h-3" />
           <span>Add</span>
         </button>
       </form>

@@ -17,11 +17,14 @@ import {
   SplitSquareVertical,
   PenTool,
   X,
-  Eye,
   EyeOff,
+  Link as LinkIcon,
+  Sliders,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
 import { Cut, Project, ReviewNote } from '@/lib/supabase';
-import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds } from '@/lib/timecode';
+import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds, STANDARD_FPS_LIST } from '@/lib/timecode';
 
 export interface VideoPlayerHandle {
   seekTo: (seconds: number) => void;
@@ -43,6 +46,10 @@ interface VideoPlayerProps {
   onDurationChange: (duration: number) => void;
   onMarkIn: () => void;
   onMarkOut: () => void;
+  onOpenAddMedia: () => void;
+  onOpenCompare: () => void;
+  onUpdateFps: (fps: number) => void;
+  onUpdateStartTc: (tc: string) => void;
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
@@ -57,6 +64,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onDurationChange,
       onMarkIn,
       onMarkOut,
+      onOpenAddMedia,
+      onOpenCompare,
+      onUpdateFps,
+      onUpdateStartTc,
     },
     ref
   ) => {
@@ -78,12 +89,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(120);
+    const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
 
-    // Compare view mode: 'split' | 'a' | 'b'
-    const [compareView, setCompareView] = useState<'split' | 'a' | 'b'>('split');
+    // Compare Modes: 'split' (side-by-side) | 'wipe' (split slider) | 'fade' (crossfade opacity) | 'a' | 'b'
+    const [compareMode, setCompareMode] = useState<'split' | 'wipe' | 'fade' | 'a' | 'b'>('split');
+    const [wipePosition, setWipePosition] = useState<number>(50); // 0 to 100%
+    const [fadeOpacity, setFadeOpacity] = useState<number>(50); // 0 to 100%
 
     // On-Screen Drawing Overlay state
     const [activeOverlayImage, setActiveOverlayImage] = useState<string | null>(null);
@@ -93,7 +106,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Standalone clock timer
     const standaloneTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Helper: Capture a clean thumbnail still
+    // Helper: Capture clean thumbnail still
     const captureThumbnail = (): string => {
       const canvas = document.createElement('canvas');
       canvas.width = 640;
@@ -107,10 +120,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(0, 0, 640, 360);
         ctx.fillStyle = '#1e293b';
-        ctx.fillRect(0, 0, 640, 60);
+        ctx.fillRect(0, 0, 640, 50);
         ctx.fillStyle = '#3b82f6';
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText(project.name.toUpperCase(), 24, 38);
+        ctx.font = 'bold 18px monospace';
+        ctx.fillText(project.name.toUpperCase(), 20, 32);
 
         const tc = secondsToDisplayTimecode(
           currentTime,
@@ -119,13 +132,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           project.dropFrame
         );
         ctx.fillStyle = '#60a5fa';
-        ctx.font = 'bold 54px monospace';
+        ctx.font = 'bold 50px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(tc, 320, 200);
 
         ctx.fillStyle = '#94a3b8';
-        ctx.font = '16px monospace';
-        ctx.fillText(`${project.fps} FPS • ${cut.name}`, 320, 250);
+        ctx.font = '14px monospace';
+        ctx.fillText(`${project.fps} FPS • ${cut.name}`, 320, 245);
       }
 
       return canvas.toDataURL('image/jpeg', 0.85);
@@ -197,8 +210,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       },
     }));
 
-    // STRICT DRAWING OVERLAY LIFECYCLE:
-    // Only display drawing when current time falls strictly in the note's target frame or range!
+    // Strict Frame/Range Binding for Drawings
     useEffect(() => {
       const startFrames = timecodeToFrames(
         project.startTimecode || '01:00:00:00',
@@ -217,7 +229,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           return currentTime >= inSec - 0.05 && currentTime <= outSec + 0.05;
         }
 
-        // Single frame tolerance (1 frame duration)
         const oneFrameSec = 1 / project.fps;
         return Math.abs(currentTime - inSec) <= oneFrameSec * 1.5;
       });
@@ -226,13 +237,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         setActiveOverlayImage(activeNote.drawingData);
         setActiveOverlayLabel(`${activeNote.timecode} - ${activeNote.presetLabel}`);
       } else {
-        // Automatically hide overlay when playhead moves outside frame/range
         setActiveOverlayImage(null);
         setActiveOverlayLabel(null);
       }
     }, [currentTime, notes, project]);
 
-    // Toggle Play/Pause across all modes
+    // Toggle Play/Pause
     const togglePlayback = () => {
       if (cut.provider === 'local' || cut.provider === 'drive') {
         if (videoRef.current) {
@@ -304,7 +314,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             player.on('loaded', async () => {
               try {
                 const d = await player.getDuration();
-                if (isMounted) {
+                if (isMounted && d > 0) {
                   setDuration(d);
                   onDurationChange(d);
                 }
@@ -385,7 +395,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             playerA.on('loaded', async () => {
               try {
                 const d = await playerA.getDuration();
-                if (isMounted) {
+                if (isMounted && d > 0) {
                   setDuration(d);
                   onDurationChange(d);
                 }
@@ -443,16 +453,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     const handleHtml5LoadedMetadata = () => {
       if (videoRef.current) {
-        const d = videoRef.current.duration || 120;
-        setDuration(d);
-        onDurationChange(d);
+        const d = videoRef.current.duration || 0;
+        if (d > 0) {
+          setDuration(d);
+          onDurationChange(d);
+        }
       }
     };
 
     // Frame Stepping
     const stepFrame = (frames: number) => {
       const delta = frames / project.fps;
-      const targetTime = Math.max(0, Math.min(currentTime + delta, duration));
+      const targetTime = Math.max(0, Math.min(currentTime + delta, duration || 1000));
 
       if (cut.provider === 'local' || cut.provider === 'drive') {
         if (videoRef.current) {
@@ -483,24 +495,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         onTimeUpdate(targetTime);
       }
     };
-
-    // Standalone timer
-    useEffect(() => {
-      if (cut.provider === 'standalone' && isPlaying) {
-        standaloneTimerRef.current = setInterval(() => {
-          setCurrentTime(prev => {
-            const next = prev + 1 / project.fps;
-            onTimeUpdate(next);
-            return next;
-          });
-        }, 1000 / project.fps);
-      } else {
-        if (standaloneTimerRef.current) clearInterval(standaloneTimerRef.current);
-      }
-      return () => {
-        if (standaloneTimerRef.current) clearInterval(standaloneTimerRef.current);
-      };
-    }, [isPlaying, cut.provider, project.fps, onTimeUpdate]);
 
     // Keyboard Shortcuts
     useEffect(() => {
@@ -543,121 +537,278 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         : '';
 
     return (
-      <div className="flex flex-col bg-[#0b0e16] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl relative">
-        {/* Main Video Display Area */}
-        <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none">
-          {cut.provider === 'compare' ? (
-            /* Compare Dual Screen */
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
-              <div className="w-full h-full flex">
-                {/* Clip A View */}
-                <div
-                  className={`relative transition-all duration-200 ${
-                    compareView === 'split'
-                      ? 'w-1/2 border-r border-slate-700'
-                      : compareView === 'a'
-                      ? 'w-full'
-                      : 'hidden'
-                  }`}
-                >
-                  {isVimeoA ? (
-                    <div
-                      ref={vimeoCompareContainerARef}
-                      className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
-                    />
-                  ) : (
-                    <video
-                      ref={html5VideoARef}
-                      src={cut.videoUrl}
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                  )}
-                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-blue-600/80 text-white text-[10px] font-bold z-20">
-                    Clip A (Cut 1)
-                  </span>
-                </div>
+      <div className="flex flex-col bg-[#0b0e16] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl flex-1 min-h-0">
+        {/* Top Embedded Control Bar inside Video Player */}
+        <div className="h-10 bg-[#0e131f] border-b border-[#1d2538] px-3 flex items-center justify-between text-slate-300 text-xs shrink-0 select-none">
+          {/* Left: Quick Actions (Add Video Link & Compare) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenAddMedia}
+              className="px-2.5 py-1 rounded-lg bg-[#161f30] hover:bg-[#202d45] border border-[#263552] text-slate-200 hover:text-white flex items-center gap-1.5 transition active:scale-95 text-[11px] font-bold"
+            >
+              <LinkIcon className="w-3 h-3 text-blue-400" />
+              <span>Add Video / Link</span>
+            </button>
 
-                {/* Clip B View */}
-                <div
-                  className={`relative transition-all duration-200 ${
-                    compareView === 'split'
-                      ? 'w-1/2'
-                      : compareView === 'b'
-                      ? 'w-full'
-                      : 'hidden'
-                  }`}
-                >
-                  {isVimeoB ? (
-                    <div
-                      ref={vimeoCompareContainerBRef}
-                      className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full"
-                    />
-                  ) : (
-                    <video
-                      ref={html5VideoBRef}
-                      src={cut.videoUrlB}
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                  )}
-                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-purple-600/80 text-white text-[10px] font-bold z-20">
-                    Clip B (Compare)
-                  </span>
-                </div>
-              </div>
+            <button
+              type="button"
+              onClick={onOpenCompare}
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition ${
+                cut.provider === 'compare'
+                  ? 'bg-purple-600/30 border-purple-500 text-purple-300 shadow'
+                  : 'bg-[#161f30] border-[#263552] text-slate-300 hover:text-purple-300'
+              }`}
+            >
+              <SplitSquareVertical className="w-3 h-3 text-purple-400" />
+              <span>Compare Clips</span>
+            </button>
+          </div>
 
-              {/* Master Overlay Click to Play/Pause */}
-              <div
-                onClick={togglePlayback}
-                className="absolute inset-0 cursor-pointer pointer-events-auto bg-transparent z-10"
+          {/* Right: Embedded FPS, Start TC & Big LCD Timecode */}
+          <div className="flex items-center gap-2">
+            {/* FPS Selector */}
+            <div className="flex items-center gap-1 bg-[#090d14] px-2 py-0.5 rounded-lg border border-[#232d44]">
+              <span className="text-[10px] uppercase font-bold text-slate-500">FPS</span>
+              <select
+                value={project.fps}
+                onChange={e => onUpdateFps(Number(e.target.value))}
+                className="bg-transparent text-[11px] font-bold text-blue-400 focus:outline-none cursor-pointer"
+              >
+                {STANDARD_FPS_LIST.map(f => (
+                  <option key={f.value} value={f.value} className="bg-[#111724] text-white">
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Start TC input */}
+            <div className="flex items-center gap-1 bg-[#090d14] px-2 py-0.5 rounded-lg border border-[#232d44]">
+              <span className="text-[10px] uppercase font-bold text-slate-500">Start</span>
+              <input
+                type="text"
+                value={project.startTimecode}
+                onChange={e => onUpdateStartTc(e.target.value)}
+                className="w-16 bg-transparent text-[11px] font-mono font-bold text-slate-200 text-center focus:outline-none focus:text-blue-400"
+                placeholder="01:00:00:00"
               />
+            </div>
 
+            {/* LCD Timecode Indicator */}
+            <div className="bg-[#090d14] px-2.5 py-0.5 rounded-lg border border-[#232d44] font-mono text-xs font-black text-blue-400 tracking-wider flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>
+                {secondsToDisplayTimecode(
+                  currentTime,
+                  project.fps,
+                  project.startTimecode,
+                  project.dropFrame
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Video Display Area (Flexible Proportion) */}
+        <div className="relative flex-1 min-h-[260px] bg-black flex items-center justify-center overflow-hidden select-none">
+          {cut.provider === 'compare' ? (
+            /* COMPARE ENGINE: Supports Split 50/50, Wipe Slider, Fade Crossfade, A/B */
+            <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
               {/* Compare Mode Switcher Top Center */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-1 rounded-xl flex items-center gap-1 z-20 shadow-2xl">
+              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-1 rounded-xl flex items-center gap-1 z-30 shadow-2xl">
                 <button
                   type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setCompareView('split');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
-                    compareView === 'split'
-                      ? 'bg-purple-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
+                  onClick={() => setCompareMode('split')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    compareMode === 'split' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   Split 50/50
                 </button>
                 <button
                   type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setCompareView('a');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
-                    compareView === 'a'
-                      ? 'bg-blue-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
+                  onClick={() => setCompareMode('wipe')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    compareMode === 'wipe' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Wipe
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCompareMode('fade')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    compareMode === 'fade' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Fade
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCompareMode('a')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    compareMode === 'a' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   Clip A
                 </button>
                 <button
                   type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setCompareView('b');
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
-                    compareView === 'b'
-                      ? 'bg-purple-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
+                  onClick={() => setCompareMode('b')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    compareMode === 'b' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   Clip B
                 </button>
               </div>
+
+              {/* 1. SIDE BY SIDE (SPLIT 50/50) */}
+              {compareMode === 'split' && (
+                <div className="w-full h-full flex">
+                  <div className="w-1/2 h-full relative border-r border-slate-700">
+                    {isVimeoA ? (
+                      <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
+                    )}
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-blue-600/80 text-white text-[10px] font-bold z-20">
+                      Clip A
+                    </span>
+                  </div>
+                  <div className="w-1/2 h-full relative">
+                    {isVimeoB ? (
+                      <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
+                    )}
+                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-purple-600/80 text-white text-[10px] font-bold z-20">
+                      Clip B
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. WIPE MODE (Interactive vertical divider slider) */}
+              {compareMode === 'wipe' && (
+                <div className="w-full h-full relative overflow-hidden flex items-center justify-center">
+                  {/* Clip A (Background Full) */}
+                  <div className="absolute inset-0 w-full h-full">
+                    {isVimeoA ? (
+                      <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
+                    )}
+                  </div>
+
+                  {/* Clip B (Foreground Clipped by Wipe Position) */}
+                  <div
+                    style={{ clipPath: `inset(0 0 0 ${wipePosition}%)` }}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                  >
+                    {isVimeoB ? (
+                      <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
+                    )}
+                  </div>
+
+                  {/* Wipe Vertical Divider Line */}
+                  <div
+                    style={{ left: `${wipePosition}%` }}
+                    className="absolute top-0 bottom-0 w-1 bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)] pointer-events-none z-20"
+                  >
+                    <div className="absolute top-1/2 -translate-y-1/2 -left-3.5 w-8 h-8 rounded-full bg-purple-600 border-2 border-white flex items-center justify-center text-white text-[10px] font-black shadow-2xl">
+                      ⇔
+                    </div>
+                  </div>
+
+                  {/* Wipe Control Slider Bar Bottom Center */}
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] px-3 py-1.5 rounded-xl flex items-center gap-2 z-30 shadow-2xl">
+                    <span className="text-[10px] font-bold text-blue-400">Clip A</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={wipePosition}
+                      onChange={e => setWipePosition(Number(e.target.value))}
+                      className="w-36 cursor-ew-resize accent-purple-500"
+                    />
+                    <span className="text-[10px] font-bold text-purple-400">Clip B</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. FADE MODE (Crossfade / Onion Skin Opacity Slider) */}
+              {compareMode === 'fade' && (
+                <div className="w-full h-full relative overflow-hidden flex items-center justify-center">
+                  {/* Clip A (Full Base) */}
+                  <div className="absolute inset-0 w-full h-full">
+                    {isVimeoA ? (
+                      <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
+                    )}
+                  </div>
+
+                  {/* Clip B (Overlay with Opacity) */}
+                  <div
+                    style={{ opacity: fadeOpacity / 100 }}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                  >
+                    {isVimeoB ? (
+                      <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : (
+                      <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
+                    )}
+                  </div>
+
+                  {/* Fade Control Slider Bar Bottom Center */}
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] px-3 py-1.5 rounded-xl flex items-center gap-2 z-30 shadow-2xl">
+                    <span className="text-[10px] font-bold text-blue-400">Clip A</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={fadeOpacity}
+                      onChange={e => setFadeOpacity(Number(e.target.value))}
+                      className="w-36 cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-[10px] font-bold text-purple-400">Clip B ({fadeOpacity}%)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. A / B FULL TOGGLE */}
+              {compareMode === 'a' && (
+                <div className="w-full h-full relative">
+                  {isVimeoA ? (
+                    <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                  ) : (
+                    <video ref={html5VideoARef} src={cut.videoUrl} playsInline className="w-full h-full object-contain" />
+                  )}
+                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-blue-600/80 text-white text-[10px] font-bold z-20">
+                    Clip A (Solo)
+                  </span>
+                </div>
+              )}
+
+              {compareMode === 'b' && (
+                <div className="w-full h-full relative">
+                  {isVimeoB ? (
+                    <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                  ) : (
+                    <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline className="w-full h-full object-contain" />
+                  )}
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-purple-600/80 text-white text-[10px] font-bold z-20">
+                    Clip B (Solo)
+                  </span>
+                </div>
+              )}
+
+              {/* Click to Play/Pause Overlay */}
+              <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-10" />
             </div>
           ) : cut.provider === 'local' || cut.provider === 'drive' ? (
             videoSrc ? (
@@ -672,19 +823,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 className="w-full h-full object-contain cursor-pointer"
               />
             ) : (
-              <div className="text-center p-6 text-slate-500">
-                <Video className="w-12 h-12 mx-auto mb-2 opacity-50 text-blue-400" />
-                <p className="text-sm font-semibold text-slate-300">No video selected</p>
-                <p className="text-xs text-slate-500 mt-1">Paste a Vimeo/YouTube link or upload file above</p>
+              <div className="text-center p-6 text-slate-500 cursor-pointer" onClick={onOpenAddMedia}>
+                <Video className="w-10 h-10 mx-auto mb-2 opacity-50 text-blue-400" />
+                <p className="text-xs font-semibold text-slate-300">Click to Add Video Link or File</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Vimeo, YouTube, MP4, MOV</p>
               </div>
             )
           ) : cut.provider === 'vimeo' ? (
             <div className="w-full h-full relative flex items-center justify-center bg-black">
               <div ref={vimeoContainerRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
-              <div
-                onClick={togglePlayback}
-                className="absolute inset-0 cursor-pointer pointer-events-auto bg-transparent z-10"
-              />
+              <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-10" />
             </div>
           ) : cut.provider === 'youtube' ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
@@ -699,13 +847,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             /* Standalone Clock */
             <div
               onClick={togglePlayback}
-              className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#0e131d] to-[#080b11] p-8 cursor-pointer select-none"
+              className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#0e131d] to-[#080b11] p-6 cursor-pointer select-none"
             >
-              <div className="flex items-center gap-2 mb-3 text-slate-500 text-xs uppercase tracking-widest font-semibold">
-                <Clock className="w-4 h-4 text-blue-400" />
-                <span>Standalone SMPTE Clock {isPlaying ? '(RUNNING)' : '(PAUSED)'}</span>
+              <div className="flex items-center gap-1.5 mb-2 text-slate-500 text-[11px] uppercase tracking-widest font-semibold">
+                <Clock className="w-3.5 h-3.5 text-blue-400" />
+                <span>SMPTE Master Clock {isPlaying ? '(RUNNING)' : '(PAUSED)'}</span>
               </div>
-              <div className="text-5xl md:text-7xl font-mono font-black text-blue-400 tracking-wider drop-shadow-[0_0_25px_rgba(59,130,246,0.35)]">
+              <div className="text-4xl md:text-6xl font-mono font-black text-blue-400 tracking-wider drop-shadow-[0_0_25px_rgba(59,130,246,0.35)]">
                 {secondsToDisplayTimecode(
                   currentTime,
                   project.fps,
@@ -713,7 +861,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   project.dropFrame
                 )}
               </div>
-              <div className="mt-4 text-xs font-mono text-slate-400 flex items-center gap-4">
+              <div className="mt-2 text-[11px] font-mono text-slate-400 flex items-center gap-3">
                 <span>{project.fps} FPS</span>
                 <span>•</span>
                 <span>{project.dropFrame ? 'DROP FRAME' : 'NON-DROP FRAME'}</span>
@@ -721,7 +869,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
           )}
 
-          {/* ACTIVE ON-SCREEN DRAWING OVERLAY LAYER (Strictly on target frame or range) */}
+          {/* ACTIVE ON-SCREEN DRAWING OVERLAY LAYER */}
           {activeOverlayImage && showOverlay && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center animate-in fade-in duration-100">
               <img
@@ -730,105 +878,89 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 className="w-full h-full object-contain pointer-events-none"
               />
 
-              {/* Overlay Indicator Badge */}
-              <div className="absolute bottom-3 left-3 bg-[#0d121c]/90 backdrop-blur-md border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-2xl flex items-center gap-2 pointer-events-auto">
-                <PenTool className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <span>{activeOverlayLabel || 'Frame Drawing Active'}</span>
+              <div className="absolute bottom-3 left-3 bg-[#0d121c]/90 backdrop-blur-md border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-xl text-[11px] font-bold shadow-2xl flex items-center gap-1.5 pointer-events-auto">
+                <PenTool className="w-3 h-3 text-amber-400 animate-pulse" />
+                <span>{activeOverlayLabel || 'Markup Active'}</span>
                 <button
                   onClick={() => setShowOverlay(!showOverlay)}
-                  className="p-1 text-slate-400 hover:text-white transition"
-                  title="Hide markup overlay"
+                  className="p-0.5 text-slate-400 hover:text-white"
+                  title="Hide overlay"
                 >
-                  <EyeOff className="w-3.5 h-3.5" />
+                  <EyeOff className="w-3 h-3" />
                 </button>
                 <button
                   onClick={() => setActiveOverlayImage(null)}
-                  className="p-1 text-slate-400 hover:text-red-400 transition"
+                  className="p-0.5 text-slate-400 hover:text-red-400"
                   title="Dismiss markup"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             </div>
           )}
-
-          {/* Big LCD Timecode Overlay Top Right */}
-          <div className="absolute top-3 right-3 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] px-3.5 py-1.5 rounded-xl text-blue-400 font-mono text-sm font-black shadow-2xl tracking-widest flex items-center gap-2 pointer-events-none z-20">
-            <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-            <span>
-              {secondsToDisplayTimecode(
-                currentTime,
-                project.fps,
-                project.startTimecode,
-                project.dropFrame
-              )}
-            </span>
-          </div>
         </div>
 
         {/* Transport Control Bar */}
-        <div className="h-14 bg-[#0e131f] border-t border-[#1d2538] px-4 flex items-center justify-between text-slate-300 select-none">
-          {/* Left: Frame Steps & Play/Pause */}
-          <div className="flex items-center gap-2">
+        <div className="h-11 bg-[#0e131f] border-t border-[#1d2538] px-3 flex items-center justify-between text-slate-300 shrink-0 select-none">
+          {/* Frame Steps & Play/Pause */}
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => stepFrame(-Math.round(project.fps))}
               title="Jump -1 Sec (Shift+Left)"
-              className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition active:scale-95"
+              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
             >
-              <SkipBack className="w-4 h-4" />
+              <SkipBack className="w-3.5 h-3.5" />
             </button>
 
             <button
               onClick={() => stepFrame(-1)}
               title="Previous Frame (Left Arrow / J)"
-              className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition active:scale-95"
+              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
 
             {/* Play/Pause Button */}
             <button
               onClick={togglePlayback}
-              className={`p-2.5 rounded-xl text-white transition shadow-lg active:scale-95 flex items-center gap-1.5 px-4 font-bold text-xs ${
-                isPlaying
-                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/30'
-                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40'
+              className={`p-1.5 rounded-lg text-white transition shadow active:scale-95 flex items-center gap-1 px-3 font-bold text-[11px] ${
+                isPlaying ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'
               }`}
               title="Play / Pause (Space / K)"
             >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
               <span>{isPlaying ? 'PAUSE' : 'PLAY'}</span>
             </button>
 
             <button
               onClick={() => stepFrame(1)}
               title="Next Frame (Right Arrow / L)"
-              className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition active:scale-95"
+              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
 
             <button
               onClick={() => stepFrame(Math.round(project.fps))}
               title="Jump +1 Sec (Shift+Right)"
-              className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition active:scale-95"
+              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
             >
-              <SkipForward className="w-4 h-4" />
+              <SkipForward className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* Center: In / Out Point Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={onMarkIn}
-              className="px-3 py-1.5 rounded-xl bg-[#141b29] hover:bg-[#1f283d] border border-[#232d44] text-xs font-bold text-amber-400 transition active:scale-95"
+              className="px-2.5 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] border border-[#232d44] text-[11px] font-bold text-amber-400 transition"
               title="Set In Point (I)"
             >
               [ IN ]
             </button>
             <button
               onClick={onMarkOut}
-              className="px-3 py-1.5 rounded-xl bg-[#141b29] hover:bg-[#1f283d] border border-[#232d44] text-xs font-bold text-amber-400 transition active:scale-95"
+              className="px-2.5 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] border border-[#232d44] text-[11px] font-bold text-amber-400 transition"
               title="Set Out Point (O)"
             >
               [ OUT ]
@@ -836,7 +968,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </div>
 
           {/* Right: Volume & Fullscreen */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
                 if (videoRef.current) {
@@ -849,9 +981,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   setIsMuted(!isMuted);
                 }
               }}
-              className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
+              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
             >
-              {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4" />}
+              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-400" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
 
             <button
@@ -864,10 +996,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   } catch (e) {}
                 }
               }}
-              className="p-2 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
+              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition"
               title="Fullscreen"
             >
-              <Maximize2 className="w-4 h-4" />
+              <Maximize2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

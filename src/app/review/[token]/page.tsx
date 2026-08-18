@@ -206,6 +206,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
       text: data.text,
       frameNumber: timecodeToFrames(noteTc, project.fps, project.dropFrame),
       timecode: noteTc,
+      colorGrade: data.colorGrade,
       drawingData: activeDrawingVector || data.drawingData,
       stillImageUrl: finalThumbnail || undefined,
       audioBlobUrl: audioUrl,

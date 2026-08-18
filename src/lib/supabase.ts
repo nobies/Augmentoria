@@ -54,6 +54,15 @@ export interface ReviewNote {
   timecodeOut?: string;
   frameOut?: number;
   drawingData?: string; // base64 / vector paths
+  colorGrade?: {
+    brightness: number;
+    contrast: number;
+    saturation: number;
+    temperature: number;
+    tint: number;
+    hue: number;
+    preset: string;
+  };
   stillImageUrl?: string;
   audioBlobUrl?: string; // local or cloud audio URL
   authorName: string;

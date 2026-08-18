@@ -109,13 +109,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Drawing Overlay Visibility
     const [showMarkup, setShowMarkup] = useState(true);
 
-    // Compute live CSS filter style for Color Grading
-    const gradeStyle = liveGrade
-      ? {
-          filter: `brightness(${liveGrade.brightness}%) contrast(${liveGrade.contrast}%) saturate(${liveGrade.saturation}%) hue-rotate(${liveGrade.temperature + liveGrade.hue}deg)`,
-        }
-      : {};
-
     // Fetch Vimeo High-Res Thumbnail
     useEffect(() => {
       if (cut.provider === 'vimeo' && cut.videoUrl) {
@@ -130,18 +123,43 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     }, [cut.provider, cut.videoUrl]);
 
-    // Check if current frame or range has markup/drawing
-    const currentFrame = Math.round(currentTime * project.fps);
-    const activeNoteWithMarkup = selectedNote?.drawingData
-      ? selectedNote
-      : notes.find(n => {
-          if (!n.drawingData) return false;
-          const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-          const endF = n.timecodeOut
-            ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
-            : startF + 1;
-          return currentFrame >= startF && currentFrame <= endF;
-        });
+    // Current Playhead Frame
+    const startFramesOffset = timecodeToFrames(
+      project.startTimecode || '01:00:00:00',
+      project.fps,
+      project.dropFrame
+    );
+    const currentAbsoluteFrame = startFramesOffset + Math.round(currentTime * project.fps);
+
+    // Active Note with Drawing strictly within its Frame or In/Out Range
+    const activeNoteWithMarkup = notes.find(n => {
+      if (!n.drawingData) return false;
+      const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+      const endF = n.timecodeOut
+        ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
+        : startF;
+      return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
+    });
+
+    // Active Note with Color Grade strictly within its Frame or Range
+    const activeNoteWithGrade = notes.find(n => {
+      if (!n.colorGrade) return false;
+      const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+      const endF = n.timecodeOut
+        ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
+        : startF;
+      return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
+    });
+
+    // Determine active color grade to display
+    const effectiveGrade = liveGrade || activeNoteWithGrade?.colorGrade || null;
+
+    // Compute live CSS filter style
+    const gradeStyle = effectiveGrade
+      ? {
+          filter: `brightness(${effectiveGrade.brightness}%) contrast(${effectiveGrade.contrast}%) saturate(${effectiveGrade.saturation}%) hue-rotate(${effectiveGrade.temperature + (effectiveGrade.hue || 0)}deg)`,
+        }
+      : {};
 
     // Capture Thumbnail
     const captureThumbnail = (): string => {

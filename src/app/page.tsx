@@ -279,6 +279,7 @@ export default function Home() {
     category: 'editorial' | 'vfx' | 'color' | 'sound' | 'general';
     presetLabel: string;
     text: string;
+    colorGrade?: ColorGradeSettings;
     stillImageUrl?: string;
     audioBlob?: Blob;
     drawingData?: string;
@@ -330,6 +331,7 @@ export default function Home() {
       timecode: noteTc,
       timecodeOut: tcOut,
       frameOut: frameOutNum,
+      colorGrade: data.colorGrade,
       drawingData: activeDrawingVector || data.drawingData,
       stillImageUrl: finalThumbnail || undefined,
       audioBlobUrl: audioUrl,
@@ -348,16 +350,16 @@ export default function Home() {
     setOutTime(null);
   };
 
-  // Apply Color Grade
+  // Apply Color Grade to Note (Frame / In-Out Range)
   const handleApplyColorGrade = (grade: ColorGradeSettings, applyScope: 'frame' | 'range' | 'master') => {
-    setActiveGrade(grade);
     setLivePreviewGrade(null);
 
-    // Save as a color correction review note
+    // Save as a color correction review note with colorGrade object
     handleAddNote({
       category: 'color',
       presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Correction',
       text: `Exposure: ${grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%, Contrast: ${grade.contrast}%, Sat: ${grade.saturation}%, Temp: ${grade.temperature}K`,
+      colorGrade: grade,
     });
   };
 

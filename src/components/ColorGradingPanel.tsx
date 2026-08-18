@@ -4,14 +4,11 @@ import React, { useState } from 'react';
 import {
   Palette,
   Sliders,
-  Sparkles,
   Eye,
   EyeOff,
   RotateCcw,
   Check,
   X,
-  Layers,
-  SplitSquareVertical,
 } from 'lucide-react';
 
 export interface ColorGradeSettings {
@@ -35,30 +32,30 @@ export const DEFAULT_GRADE: ColorGradeSettings = {
 };
 
 export const FILM_PRESETS = [
-  { id: 'none', name: 'Original (Rec.709)', grade: DEFAULT_GRADE },
+  { id: 'none', name: 'Rec.709 Standard', grade: DEFAULT_GRADE },
   {
     id: 'teal-orange',
-    name: 'Teal & Orange Blockbuster',
+    name: 'Teal & Orange',
     grade: { brightness: 105, contrast: 120, saturation: 125, temperature: 15, tint: -10, hue: 10, preset: 'teal-orange' },
   },
   {
     id: 'cinematic-warm',
-    name: 'Cinematic Golden Warm',
+    name: 'Cinematic Warm',
     grade: { brightness: 102, contrast: 115, saturation: 110, temperature: 30, tint: 5, hue: 0, preset: 'cinematic-warm' },
   },
   {
     id: 'noir',
-    name: 'Cool Nordic Noir',
+    name: 'Nordic Noir',
     grade: { brightness: 95, contrast: 130, saturation: 75, temperature: -35, tint: 10, hue: -5, preset: 'noir' },
   },
   {
     id: 'vintage',
-    name: 'Vintage 70s Kodachrome',
+    name: '70s Film Look',
     grade: { brightness: 108, contrast: 110, saturation: 90, temperature: 20, tint: 15, hue: 15, preset: 'vintage' },
   },
   {
     id: 'bw',
-    name: 'B&W High Contrast Tri-X',
+    name: 'B&W Tri-X',
     grade: { brightness: 105, contrast: 145, saturation: 0, temperature: 0, tint: 0, hue: 0, preset: 'bw' },
   },
 ];
@@ -112,59 +109,56 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-[#111723] border border-[#232d44] rounded-2xl shadow-2xl p-5 relative animate-in fade-in zoom-in-95 max-h-[92vh] overflow-y-auto">
-        {/* Close Button */}
-        <button
-          onClick={() => {
-            onLivePreviewChange(null);
-            onClose();
-          }}
-          className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1a2233] transition"
-        >
-          <X className="w-4 h-4" />
-        </button>
+    <div className="w-[320px] lg:w-[350px] bg-[#111724] border border-[#20293d] rounded-2xl p-3 flex flex-col shadow-2xl shrink-0 h-full min-h-0 animate-in fade-in select-none">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-[#1e273b] pb-2 mb-2">
+        <div className="flex items-center gap-2">
+          <Palette className="w-4 h-4 text-orange-400" />
+          <h2 className="text-xs font-bold text-white uppercase tracking-wider">Color Grading</h2>
+        </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
-              <Palette className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white">Color Grading & Look Engine</h2>
-              <p className="text-[11px] text-slate-400">Live primary color wheels & cinematic LUT presets</p>
-            </div>
-          </div>
-
-          {/* Bypass Toggle Button */}
+        <div className="flex items-center gap-1.5">
+          {/* Bypass Toggle */}
           <button
             type="button"
             onClick={toggleBypass}
-            className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition ${
+            className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition ${
               isBypassed
-                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                : 'bg-[#182030] border-[#26334d] text-slate-300 hover:text-white'
+                ? 'bg-amber-500/20 border border-amber-500 text-amber-300'
+                : 'bg-[#182030] text-slate-300 hover:text-white'
             }`}
-            title="Toggle Before / After Bypass"
+            title="Toggle Bypass (Before / After)"
           >
             {isBypassed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-            <span>{isBypassed ? 'Bypassed' : 'Preview Active'}</span>
+            <span>{isBypassed ? 'Bypassed' : 'Live'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              onLivePreviewChange(null);
+              onClose();
+            }}
+            className="p-1 rounded text-slate-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
+      </div>
 
-        {/* Cinematic Film Presets */}
-        <div className="mb-4">
-          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5">
-            Cinematic LUTs & Film Looks
+      {/* Scrollable Adjustments */}
+      <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+        {/* Film LUT Presets */}
+        <div>
+          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+            Film Looks & LUTs
           </span>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1">
             {FILM_PRESETS.map(p => (
               <button
                 type="button"
                 key={p.id}
                 onClick={() => handleSelectPreset(p)}
-                className={`px-2.5 py-1.5 rounded-lg border text-left text-[11px] font-semibold transition truncate ${
+                className={`px-2 py-1 rounded-lg border text-left text-[10px] font-bold transition truncate ${
                   grade.preset === p.id
                     ? 'bg-orange-600 text-white border-orange-400 shadow'
                     : 'bg-[#151c2a] border-[#222d42] text-slate-300 hover:bg-[#1d273a] hover:text-white'
@@ -176,17 +170,17 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
           </div>
         </div>
 
-        {/* Primary Color Sliders */}
-        <div className="p-3.5 bg-[#141b29] rounded-xl border border-[#222c42] space-y-3 mb-4">
+        {/* Primary Sliders */}
+        <div className="p-2.5 bg-[#141b29] rounded-xl border border-[#222c42] space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <Sliders className="w-3.5 h-3.5 text-orange-400" />
+            <span className="text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-1">
+              <Sliders className="w-3 h-3 text-orange-400" />
               Primary Adjustments
             </span>
             <button
               type="button"
               onClick={handleReset}
-              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 transition"
+              className="text-[9px] text-slate-400 hover:text-white flex items-center gap-0.5 transition"
             >
               <RotateCcw className="w-2.5 h-2.5" />
               <span>Reset</span>
@@ -195,9 +189,11 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
 
           {/* Exposure / Brightness */}
           <div>
-            <div className="flex justify-between text-[11px] font-medium text-slate-300 mb-1">
-              <span>Exposure / Brightness</span>
-              <span className="font-mono text-orange-400">{grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%</span>
+            <div className="flex justify-between text-[10px] font-medium text-slate-300 mb-0.5">
+              <span>Exposure</span>
+              <span className="font-mono text-orange-400">
+                {grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%
+              </span>
             </div>
             <input
               type="range"
@@ -205,13 +201,13 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
               max="150"
               value={grade.brightness}
               onChange={e => updateSetting('brightness', Number(e.target.value))}
-              className="w-full accent-orange-500 cursor-pointer"
+              className="w-full accent-orange-500 cursor-pointer h-1.5"
             />
           </div>
 
           {/* Contrast */}
           <div>
-            <div className="flex justify-between text-[11px] font-medium text-slate-300 mb-1">
+            <div className="flex justify-between text-[10px] font-medium text-slate-300 mb-0.5">
               <span>Contrast</span>
               <span className="font-mono text-orange-400">{grade.contrast}%</span>
             </div>
@@ -221,14 +217,14 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
               max="160"
               value={grade.contrast}
               onChange={e => updateSetting('contrast', Number(e.target.value))}
-              className="w-full accent-orange-500 cursor-pointer"
+              className="w-full accent-orange-500 cursor-pointer h-1.5"
             />
           </div>
 
           {/* Saturation */}
           <div>
-            <div className="flex justify-between text-[11px] font-medium text-slate-300 mb-1">
-              <span>Saturation / Vibrance</span>
+            <div className="flex justify-between text-[10px] font-medium text-slate-300 mb-0.5">
+              <span>Saturation</span>
               <span className="font-mono text-orange-400">{grade.saturation}%</span>
             </div>
             <input
@@ -237,69 +233,71 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
               max="200"
               value={grade.saturation}
               onChange={e => updateSetting('saturation', Number(e.target.value))}
-              className="w-full accent-orange-500 cursor-pointer"
+              className="w-full accent-orange-500 cursor-pointer h-1.5"
             />
           </div>
 
-          {/* Temperature (Cool Blue <-> Warm Orange) */}
+          {/* Temperature */}
           <div>
-            <div className="flex justify-between text-[11px] font-medium text-slate-300 mb-1">
-              <span>Color Temperature (Warm / Cool)</span>
-              <span className="font-mono text-orange-400">{grade.temperature > 0 ? `+${grade.temperature}K` : `${grade.temperature}K`}</span>
+            <div className="flex justify-between text-[10px] font-medium text-slate-300 mb-0.5">
+              <span>Temperature</span>
+              <span className="font-mono text-orange-400">
+                {grade.temperature > 0 ? `+${grade.temperature}K` : `${grade.temperature}K`}
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-blue-400 font-bold">Cool</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] text-blue-400 font-bold">Cool</span>
               <input
                 type="range"
                 min="-50"
                 max="50"
                 value={grade.temperature}
                 onChange={e => updateSetting('temperature', Number(e.target.value))}
-                className="flex-1 accent-orange-500 cursor-pointer"
+                className="flex-1 accent-orange-500 cursor-pointer h-1.5"
               />
-              <span className="text-[10px] text-amber-400 font-bold">Warm</span>
+              <span className="text-[9px] text-amber-400 font-bold">Warm</span>
             </div>
           </div>
 
-          {/* Tint (Green <-> Magenta) */}
+          {/* Tint */}
           <div>
-            <div className="flex justify-between text-[11px] font-medium text-slate-300 mb-1">
-              <span>Tint (Green / Magenta)</span>
+            <div className="flex justify-between text-[10px] font-medium text-slate-300 mb-0.5">
+              <span>Tint</span>
               <span className="font-mono text-orange-400">{grade.tint > 0 ? `+${grade.tint}` : grade.tint}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-emerald-400 font-bold">Green</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] text-emerald-400 font-bold">Green</span>
               <input
                 type="range"
                 min="-50"
                 max="50"
                 value={grade.tint}
                 onChange={e => updateSetting('tint', Number(e.target.value))}
-                className="flex-1 accent-purple-500 cursor-pointer"
+                className="flex-1 accent-purple-500 cursor-pointer h-1.5"
               />
-              <span className="text-[10px] text-pink-400 font-bold">Magenta</span>
+              <span className="text-[9px] text-pink-400 font-bold">Magenta</span>
             </div>
           </div>
         </div>
 
-        {/* Apply Scope (Frame, In/Out Range, Master Clip) */}
-        <div className="mb-5">
-          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1.5">
-            Apply Scope / Target
+        {/* Scope Selector */}
+        <div>
+          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+            Target Scope
           </span>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1">
             {[
-              { id: 'frame', label: 'Current Frame' },
-              { id: 'range', label: 'In/Out Range' },
-              { id: 'master', label: 'Master Clip' },
+              { id: 'frame', label: 'Frame' },
+              { id: 'range', label: 'Range' },
+              { id: 'master', label: 'Master' },
             ].map(s => (
               <button
                 type="button"
                 key={s.id}
                 onClick={() => setApplyScope(s.id as any)}
-                className={`py-1.5 rounded-lg text-center text-[11px] font-bold border transition ${
+                className={`py-1 rounded text-center text-[10px] font-bold border transition ${
                   applyScope === s.id
-                    ? 'bg-orange-600/30 border-orange-500 text-orange-300 shadow'
+                    ? 'bg-orange-600/30 border-orange-500 text-orange-300'
                     : 'bg-[#151c29] border-[#222c42] text-slate-400 hover:text-white'
                 }`}
               >
@@ -308,28 +306,28 @@ export const ColorGradingPanel: React.FC<ColorGradingPanelProps> = ({
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#222c42]">
-          <button
-            type="button"
-            onClick={() => {
-              onLivePreviewChange(null);
-              onClose();
-            }}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow-lg shadow-orange-900/30 transition active:scale-95"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>Apply Grade to Note</span>
-          </button>
-        </div>
+      {/* Actions */}
+      <div className="flex items-center justify-between pt-2 border-t border-[#1e273b] mt-2">
+        <button
+          type="button"
+          onClick={() => {
+            onLivePreviewChange(null);
+            onClose();
+          }}
+          className="px-2.5 py-1 text-slate-400 hover:text-white text-xs font-semibold"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow-lg shadow-orange-900/30 transition active:scale-95"
+        >
+          <Check className="w-3.5 h-3.5" />
+          <span>Apply to Note</span>
+        </button>
       </div>
     </div>
   );

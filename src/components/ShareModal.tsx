@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Share2, Copy, Check, Shield, Eye, Lock, Globe, Clock } from 'lucide-react';
+import { X, Share2, Copy, Check, Shield, Eye, Globe } from 'lucide-react';
 import { Project, Cut } from '@/lib/supabase';
 
 export interface SharePermissions {
@@ -18,6 +18,19 @@ interface ShareModalProps {
   onClose: () => void;
   project: Project;
   cut: Cut;
+}
+
+// Browser-safe URL-safe base64 encoder
+function encodeToken(obj: any): string {
+  try {
+    const jsonStr = JSON.stringify(obj);
+    const encoded = encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+      String.fromCharCode(parseInt(p1, 16))
+    );
+    return btoa(encoded).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch (e) {
+    return 'token_error';
+  }
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({
@@ -39,23 +52,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Generate deterministic token based on project & cut & timestamp
-  const shareToken = Buffer.from(
-    JSON.stringify({
-      projectId: project.id,
-      cutId: cut.id,
-      p: permissions,
-      created: Date.now(),
-    })
-  ).toString('base64url');
+  const payload = {
+    projectId: project.id,
+    cutId: cut.id,
+    p: permissions,
+    created: Date.now(),
+  };
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.dropmedia.io';
+  const shareToken = encodeToken(payload);
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001';
   const shareUrl = `${origin}/review/${shareToken}`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    try {
+      navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy to clipboard', err);
+    }
   };
 
   const togglePermission = (key: keyof SharePermissions) => {

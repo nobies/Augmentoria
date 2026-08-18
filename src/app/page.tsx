@@ -598,30 +598,31 @@ export default function Home() {
           hasActiveVoice={Boolean(activeAudioBlob)}
         />
 
-        {/* Right: Review Notes Log */}
-        <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
-          <NotesList
-            notes={notes}
-            selectedNoteId={selectedNote?.id || null}
-            onSeekToNote={handleSeekToNote}
-            onToggleResolved={handleToggleResolved}
-            onDeleteNote={handleDeleteNote}
-            onUpdateNoteText={handleUpdateNoteText}
+        {/* Right: Review Notes Log OR Docked Color Grading Side Panel */}
+        {isColorGradingOpen ? (
+          <ColorGradingPanel
+            isOpen={isColorGradingOpen}
+            onClose={() => {
+              setIsColorGradingOpen(false);
+              setLivePreviewGrade(null);
+            }}
+            currentGrade={activeGrade}
+            onApplyGrade={handleApplyColorGrade}
+            onLivePreviewChange={setLivePreviewGrade}
           />
-        </div>
+        ) : (
+          <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
+            <NotesList
+              notes={notes}
+              selectedNoteId={selectedNote?.id || null}
+              onSeekToNote={handleSeekToNote}
+              onToggleResolved={handleToggleResolved}
+              onDeleteNote={handleDeleteNote}
+              onUpdateNoteText={handleUpdateNoteText}
+            />
+          </div>
+        )}
       </main>
-
-      {/* Color Grading Panel */}
-      <ColorGradingPanel
-        isOpen={isColorGradingOpen}
-        onClose={() => {
-          setIsColorGradingOpen(false);
-          setLivePreviewGrade(null);
-        }}
-        currentGrade={activeGrade}
-        onApplyGrade={handleApplyColorGrade}
-        onLivePreviewChange={setLivePreviewGrade}
-      />
 
       {/* Notekeys Settings Modal */}
       <NotekeysModal

@@ -6,12 +6,12 @@ import {
   Pause,
   Volume2,
   VolumeX,
-  Maximize2,
   RotateCcw,
   Video,
   SplitSquareVertical,
   PenTool,
   X,
+  Eye,
   EyeOff,
   Link as LinkIcon,
   ChevronsLeft,
@@ -20,7 +20,7 @@ import {
   SkipForward,
 } from 'lucide-react';
 import { Cut, Project, ReviewNote } from '@/lib/supabase';
-import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds, STANDARD_FPS_LIST } from '@/lib/timecode';
+import { secondsToDisplayTimecode, timecodeToFrames, framesToSeconds } from '@/lib/timecode';
 import { ColorGradeSettings } from './ColorGradingPanel';
 
 export interface VideoPlayerHandle {
@@ -41,10 +41,13 @@ interface VideoPlayerProps {
   notes: ReviewNote[];
   selectedNote: ReviewNote | null;
   liveGrade?: ColorGradeSettings | null;
+  inTime?: number | null;
+  outTime?: number | null;
   onTimeUpdate: (seconds: number) => void;
   onDurationChange: (duration: number) => void;
   onMarkIn: () => void;
   onMarkOut: () => void;
+  onClearRange?: () => void;
   onOpenAddMedia: () => void;
   onOpenCompare: () => void;
   onUpdateFps: (fps: number) => void;
@@ -60,10 +63,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       notes,
       selectedNote,
       liveGrade,
+      inTime,
+      outTime,
       onTimeUpdate,
       onDurationChange,
       onMarkIn,
       onMarkOut,
+      onClearRange,
       onOpenAddMedia,
       onOpenCompare,
       onUpdateFps,
@@ -100,12 +106,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [wipePosition, setWipePosition] = useState<number>(50);
     const [fadeOpacity, setFadeOpacity] = useState<number>(50);
 
-    // Drawing Overlay
-    const [activeOverlayImage, setActiveOverlayImage] = useState<string | null>(null);
-    const [activeOverlayLabel, setActiveOverlayLabel] = useState<string | null>(null);
-    const [showOverlay, setShowOverlay] = useState(true);
-
-    const standaloneTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Drawing Overlay Visibility
+    const [showMarkup, setShowMarkup] = useState(true);
 
     // Compute live CSS filter style for Color Grading
     const gradeStyle = liveGrade
@@ -127,6 +129,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         setVimeoPosterDataUrl(null);
       }
     }, [cut.provider, cut.videoUrl]);
+
+    // Check if current frame or range has markup/drawing
+    const currentFrame = Math.round(currentTime * project.fps);
+    const activeNoteWithMarkup = selectedNote?.drawingData
+      ? selectedNote
+      : notes.find(n => {
+          if (!n.drawingData) return false;
+          const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+          const endF = n.timecodeOut
+            ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
+            : startF + 1;
+          return currentFrame >= startF && currentFrame <= endF;
+        });
 
     // Capture Thumbnail
     const captureThumbnail = (): string => {
@@ -290,6 +305,33 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     };
 
+    // Volume & Mute
+    const handleVolumeChange = (newVol: number) => {
+      setVolume(newVol);
+      setIsMuted(newVol === 0);
+      if (videoRef.current) videoRef.current.volume = newVol;
+      if (vimeoPlayerInstanceRef.current) {
+        try {
+          vimeoPlayerInstanceRef.current.setVolume(newVol).catch(() => {});
+        } catch (e) {}
+      }
+    };
+
+    const toggleMute = () => {
+      if (isMuted) {
+        setIsMuted(false);
+        handleVolumeChange(volume || 0.8);
+      } else {
+        setIsMuted(true);
+        if (videoRef.current) videoRef.current.volume = 0;
+        if (vimeoPlayerInstanceRef.current) {
+          try {
+            vimeoPlayerInstanceRef.current.setVolume(0).catch(() => {});
+          } catch (e) {}
+        }
+      }
+    };
+
     // Single Vimeo Instance Loader
     useEffect(() => {
       let isMounted = true;
@@ -428,20 +470,20 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     return (
       <div className="flex flex-col bg-[#0b0e16] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl flex-1 min-h-0">
-        {/* TOP LCD & QUICK BAR (Exact Screenshot 1 Style) */}
-        <div className="bg-[#0e131f] border-b border-[#1d2538] px-3 py-2 flex items-center justify-between text-slate-300 shrink-0 select-none">
+        {/* TOP LCD & BAR (Screenshot 1 Style) */}
+        <div className="bg-[#0e131f] border-b border-[#1d2538] px-3 py-1.5 flex items-center justify-between text-slate-300 shrink-0 select-none">
           {/* Reset / Start Jump Button */}
           <button
             onClick={() => stepDelta(-currentTime)}
             title="Reset / Return to Start"
-            className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition active:scale-95"
+            className="p-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] transition active:scale-95"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3 h-3" />
           </button>
 
-          {/* Big LCD Digital Timecode Display */}
-          <div className="flex items-center gap-3">
-            <div className="font-mono text-2xl font-black text-blue-400 tracking-widest drop-shadow-[0_0_12px_rgba(59,130,246,0.4)]">
+          {/* LCD Timecode Display */}
+          <div className="flex items-center gap-2.5">
+            <div className="font-mono text-xl font-black text-blue-400 tracking-widest drop-shadow-[0_0_10px_rgba(59,130,246,0.35)]">
               {secondsToDisplayTimecode(
                 currentTime,
                 project.fps,
@@ -450,32 +492,32 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               )}
             </div>
             <div className="text-right">
-              <span className="block text-[10px] font-mono font-bold text-slate-400 leading-none">{project.fps}</span>
-              <span className="block text-[9px] font-mono text-slate-500 leading-none">{project.dropFrame ? 'DF' : 'NDF'}</span>
+              <span className="block text-[9px] font-mono font-bold text-slate-400 leading-none">{project.fps}</span>
+              <span className="block text-[8px] font-mono text-slate-500 leading-none">{project.dropFrame ? 'DF' : 'NDF'}</span>
             </div>
           </div>
 
           {/* Right: Compare & Add Video quick buttons */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={onOpenAddMedia}
-              className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] text-slate-300 hover:text-blue-400 border border-[#232d44] transition"
+              className="p-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] text-slate-300 hover:text-blue-400 border border-[#232d44] transition"
               title="Add Video Link"
             >
-              <LinkIcon className="w-3.5 h-3.5" />
+              <LinkIcon className="w-3 h-3" />
             </button>
             <button
               type="button"
               onClick={onOpenCompare}
-              className={`p-1.5 rounded-lg border transition ${
+              className={`p-1 rounded-lg border transition ${
                 cut.provider === 'compare'
                   ? 'bg-purple-600/30 border-purple-500 text-purple-300'
                   : 'bg-[#141b29] border-[#232d44] text-slate-300 hover:text-purple-300'
               }`}
               title="Compare Clips"
             >
-              <SplitSquareVertical className="w-3.5 h-3.5" />
+              <SplitSquareVertical className="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -483,18 +525,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         {/* MAIN VIDEO DISPLAY AREA (With Live Color Grade Filter) */}
         <div
           style={gradeStyle}
-          className="relative flex-1 min-h-[240px] bg-black flex items-center justify-center overflow-hidden select-none transition-all duration-150"
+          className="relative flex-1 min-h-[220px] bg-black flex items-center justify-center overflow-hidden select-none transition-all duration-150"
         >
           {cut.provider === 'compare' ? (
             <div className="w-full h-full relative flex items-center justify-center bg-black">
               {/* Compare Mode Switcher */}
-              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-1 rounded-xl flex items-center gap-1 z-30 shadow-2xl">
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[#0c1018]/90 backdrop-blur-md border border-[#232d44] p-0.5 rounded-lg flex items-center gap-1 z-30 shadow-2xl">
                 {['split', 'wipe', 'fade', 'a', 'b'].map(m => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setCompareMode(m as any)}
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold capitalize transition ${
+                    className={`px-2 py-0.5 rounded text-[9px] font-bold capitalize transition ${
                       compareMode === m ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -538,8 +580,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 className="w-full h-full object-contain cursor-pointer"
               />
             ) : (
-              <div className="text-center p-6 text-slate-500 cursor-pointer" onClick={onOpenAddMedia}>
-                <Video className="w-10 h-10 mx-auto mb-2 opacity-50 text-blue-400" />
+              <div className="text-center p-4 text-slate-500 cursor-pointer" onClick={onOpenAddMedia}>
+                <Video className="w-8 h-8 mx-auto mb-1.5 opacity-50 text-blue-400" />
                 <p className="text-xs font-semibold text-slate-300">Click to Add Video Link or File</p>
               </div>
             )
@@ -550,76 +592,156 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
           ) : (
             <div onClick={togglePlayback} className="w-full h-full flex items-center justify-center bg-[#090d14] cursor-pointer">
-              <span className="font-mono text-4xl font-bold text-blue-400">
+              <span className="font-mono text-3xl font-bold text-blue-400">
                 {secondsToDisplayTimecode(currentTime, project.fps, project.startTimecode, project.dropFrame)}
               </span>
             </div>
           )}
 
-          {/* On-Screen Drawing Overlay */}
-          {activeOverlayImage && showOverlay && (
+          {/* On-Screen Drawing Markup Overlay */}
+          {activeNoteWithMarkup?.drawingData && showMarkup && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
-              <img src={activeOverlayImage} alt="Markup" className="w-full h-full object-contain" />
+              <img
+                src={activeNoteWithMarkup.drawingData}
+                alt="Markup"
+                className="w-full h-full object-contain"
+              />
             </div>
+          )}
+
+          {/* Markup Visibility Toggle Button in Video Corner */}
+          {activeNoteWithMarkup?.drawingData && (
+            <button
+              type="button"
+              onClick={() => setShowMarkup(!showMarkup)}
+              className="absolute top-2 right-2 z-30 px-2 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-amber-500/50 text-amber-300 text-[10px] font-bold flex items-center gap-1 shadow-lg hover:bg-black transition"
+              title="Toggle Markup Visibility"
+            >
+              {showMarkup ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+              <span>{showMarkup ? 'Markup ON' : 'Markup OFF'}</span>
+            </button>
           )}
         </div>
 
-        {/* BOTTOM MASTER SHUTTLE & PRECISION STEPPERS (Exact Screenshot 1) */}
-        <div className="bg-[#0e131f] border-t border-[#1d2538] p-2 flex flex-col gap-2 shrink-0 select-none">
-          {/* Row 1: Shuttle 4 Buttons */}
-          <div className="grid grid-cols-4 gap-1.5">
-            <button
-              onClick={() => stepDelta(-currentTime)}
-              title="Jump to Start (|<<)"
-              className="py-1.5 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] flex items-center justify-center transition active:scale-95 text-slate-300"
-            >
-              <SkipBack className="w-4 h-4" />
-            </button>
+        {/* BOTTOM MASTER SHUTTLE & COMPACT PRECISION STEPPERS */}
+        <div className="bg-[#0e131f] border-t border-[#1d2538] p-1.5 flex flex-col gap-1.5 shrink-0 select-none">
+          {/* Row 1: Slim Shuttle & In/Out & Volume Controls */}
+          <div className="flex items-center justify-between gap-2">
+            {/* In / Out Markers */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onMarkIn}
+                className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold transition active:scale-95 ${
+                  inTime !== null
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                    : 'bg-[#141b29] border-[#232d44] text-slate-300 hover:text-white'
+                }`}
+                title="Mark In [I]"
+              >
+                IN
+              </button>
+              <button
+                type="button"
+                onClick={onMarkOut}
+                className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold transition active:scale-95 ${
+                  outTime !== null
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                    : 'bg-[#141b29] border-[#232d44] text-slate-300 hover:text-white'
+                }`}
+                title="Mark Out [O]"
+              >
+                OUT
+              </button>
+              {(inTime !== null || outTime !== null) && onClearRange && (
+                <button
+                  type="button"
+                  onClick={onClearRange}
+                  className="px-1.5 py-1 rounded-lg text-slate-500 hover:text-white text-[10px]"
+                  title="Clear Range"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-            <button
-              onClick={() => stepDelta(-5)}
-              title="Shuttle Reverse (<<)"
-              className="py-1.5 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] flex items-center justify-center transition active:scale-95 text-slate-300"
-            >
-              <ChevronsLeft className="w-4 h-4" />
-            </button>
+            {/* Shuttle 4 Buttons (Slim & Compact) */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => stepDelta(-currentTime)}
+                title="Jump to Start (|<<)"
+                className="h-7 w-7 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] flex items-center justify-center transition active:scale-95 text-slate-300"
+              >
+                <SkipBack className="w-3 h-3" />
+              </button>
 
-            <button
-              onClick={togglePlayback}
-              title="Play / Pause (>)"
-              className={`py-1.5 rounded-xl border flex items-center justify-center transition active:scale-95 ${
-                isPlaying
-                  ? 'bg-amber-600/30 border-amber-500 text-amber-300'
-                  : 'bg-[#141b29] hover:bg-[#1f283d] border-[#232d44] text-slate-200'
-              }`}
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            </button>
+              <button
+                onClick={() => stepDelta(-5)}
+                title="Shuttle Reverse (<<)"
+                className="h-7 w-7 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] flex items-center justify-center transition active:scale-95 text-slate-300"
+              >
+                <ChevronsLeft className="w-3 h-3" />
+              </button>
 
-            <button
-              onClick={() => stepDelta(5)}
-              title="Shuttle Fast Forward (>>)"
-              className="py-1.5 rounded-xl bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] flex items-center justify-center transition active:scale-95 text-slate-300"
-            >
-              <ChevronsRight className="w-4 h-4" />
-            </button>
+              <button
+                onClick={togglePlayback}
+                title="Play / Pause [Space]"
+                className={`h-7 px-3 rounded-lg border flex items-center justify-center transition active:scale-95 text-xs font-bold ${
+                  isPlaying
+                    ? 'bg-amber-600/30 border-amber-500 text-amber-300'
+                    : 'bg-[#141b29] hover:bg-[#1f283d] border-[#232d44] text-slate-200'
+                }`}
+              >
+                {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              </button>
+
+              <button
+                onClick={() => stepDelta(5)}
+                title="Shuttle Fast Forward (>>)"
+                className="h-7 w-7 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] flex items-center justify-center transition active:scale-95 text-slate-300"
+              >
+                <ChevronsRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Volume Control */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleMute}
+                className="text-slate-400 hover:text-white p-1 transition"
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={e => handleVolumeChange(Number(e.target.value))}
+                className="w-14 accent-blue-500 cursor-pointer"
+                title={`Volume: ${Math.round(volume * 100)}%`}
+              />
+            </div>
           </div>
 
           {/* Row 2: Precision Stepping Pills (FRAME, SEC, MIN with [-] [+]) */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {/* FRAME Column */}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest">FRAME</span>
-              <div className="flex items-center gap-1 w-full">
+            <div className="flex items-center justify-between px-2 py-0.5 rounded-lg bg-[#141b29] border border-[#202a3f]">
+              <span className="text-[8px] font-mono font-black text-slate-500 uppercase">FRAME</span>
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => stepDelta(-1 / project.fps)}
-                  className="flex-1 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] text-xs font-mono font-bold text-slate-300 transition active:scale-95"
+                  className="w-5 h-5 rounded bg-[#0d121c] hover:bg-[#1a2336] text-slate-300 text-xs font-mono font-bold flex items-center justify-center transition"
                 >
                   -
                 </button>
                 <button
                   onClick={() => stepDelta(1 / project.fps)}
-                  className="flex-1 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] text-xs font-mono font-bold text-slate-300 transition active:scale-95"
+                  className="w-5 h-5 rounded bg-[#0d121c] hover:bg-[#1a2336] text-slate-300 text-xs font-mono font-bold flex items-center justify-center transition"
                 >
                   +
                 </button>
@@ -627,18 +749,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
 
             {/* SEC Column */}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest">SEC</span>
-              <div className="flex items-center gap-1 w-full">
+            <div className="flex items-center justify-between px-2 py-0.5 rounded-lg bg-[#141b29] border border-[#202a3f]">
+              <span className="text-[8px] font-mono font-black text-slate-500 uppercase">SEC</span>
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => stepDelta(-1)}
-                  className="flex-1 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] text-xs font-mono font-bold text-slate-300 transition active:scale-95"
+                  className="w-5 h-5 rounded bg-[#0d121c] hover:bg-[#1a2336] text-slate-300 text-xs font-mono font-bold flex items-center justify-center transition"
                 >
                   -
                 </button>
                 <button
                   onClick={() => stepDelta(1)}
-                  className="flex-1 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] text-xs font-mono font-bold text-slate-300 transition active:scale-95"
+                  className="w-5 h-5 rounded bg-[#0d121c] hover:bg-[#1a2336] text-slate-300 text-xs font-mono font-bold flex items-center justify-center transition"
                 >
                   +
                 </button>
@@ -646,18 +768,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
 
             {/* MIN Column */}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[9px] font-mono font-black text-slate-500 uppercase tracking-widest">MIN</span>
-              <div className="flex items-center gap-1 w-full">
+            <div className="flex items-center justify-between px-2 py-0.5 rounded-lg bg-[#141b29] border border-[#202a3f]">
+              <span className="text-[8px] font-mono font-black text-slate-500 uppercase">MIN</span>
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => stepDelta(-60)}
-                  className="flex-1 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] text-xs font-mono font-bold text-slate-300 transition active:scale-95"
+                  className="w-5 h-5 rounded bg-[#0d121c] hover:bg-[#1a2336] text-slate-300 text-xs font-mono font-bold flex items-center justify-center transition"
                 >
                   -
                 </button>
                 <button
                   onClick={() => stepDelta(60)}
-                  className="flex-1 py-1 rounded-lg bg-[#141b29] hover:bg-[#1f283d] hover:text-white border border-[#232d44] text-xs font-mono font-bold text-slate-300 transition active:scale-95"
+                  className="w-5 h-5 rounded bg-[#0d121c] hover:bg-[#1a2336] text-slate-300 text-xs font-mono font-bold flex items-center justify-center transition"
                 >
                   +
                 </button>

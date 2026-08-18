@@ -29,6 +29,27 @@ interface ReviewPageProps {
   params: Promise<{ token: string }>;
 }
 
+function decodeToken(token: string): any {
+  try {
+    let base64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    const decodedStr = atob(base64);
+    const jsonStr = decodeURIComponent(
+      Array.prototype.map
+        .call(decodedStr, (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Fallback simple base64 decode
+    try {
+      return JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+    } catch (err) {
+      return null;
+    }
+  }
+}
+
 export default function ClientReviewPage({ params }: ReviewPageProps) {
   const resolvedParams = use(params);
   const token = resolvedParams.token;
@@ -84,7 +105,13 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
   useEffect(() => {
     async function loadClientSession() {
       try {
-        const decoded = JSON.parse(Buffer.from(token, 'base64url').toString());
+        const decoded = decodeToken(token);
+        if (!decoded) {
+          setError('Invalid or corrupted review link.');
+          setLoading(false);
+          return;
+        }
+
         if (decoded.p) setPermissions(decoded.p);
 
         const b = await getStudioBranding();
@@ -332,21 +359,43 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
           />
         )}
 
-        <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
-          <NotesList
-            notes={notes}
-            selectedNoteId={selectedNote?.id || null}
-            onSeekToNote={n => {
-              setSelectedNote(n);
-              const nFrames = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-              const sFrames = timecodeToFrames(project.startTimecode || '01:00:00:00', project.fps, project.dropFrame);
-              videoPlayerRef.current?.seekTo(Math.max(0, (nFrames - sFrames) / project.fps));
+        {/* Right: Notes List OR Docked Color Grading Side Panel */}
+        {isGradeOpen ? (
+          <ColorGradingPanel
+            isOpen={isGradeOpen}
+            onClose={() => {
+              setIsGradeOpen(false);
+              setLivePreviewGrade(null);
             }}
-            onToggleResolved={() => {}}
-            onDeleteNote={() => {}}
-            onUpdateNoteText={() => {}}
+            currentGrade={activeGrade}
+            onApplyGrade={(grade, applyScope) => {
+              setActiveGrade(grade);
+              setLivePreviewGrade(null);
+              handleAddNote({
+                category: 'color',
+                presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Grade',
+                text: `Exposure: ${grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%, Contrast: ${grade.contrast}%, Sat: ${grade.saturation}%`,
+              });
+            }}
+            onLivePreviewChange={setLivePreviewGrade}
           />
-        </div>
+        ) : (
+          <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
+            <NotesList
+              notes={notes}
+              selectedNoteId={selectedNote?.id || null}
+              onSeekToNote={n => {
+                setSelectedNote(n);
+                const nFrames = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
+                const sFrames = timecodeToFrames(project.startTimecode || '01:00:00:00', project.fps, project.dropFrame);
+                videoPlayerRef.current?.seekTo(Math.max(0, (nFrames - sFrames) / project.fps));
+              }}
+              onToggleResolved={() => {}}
+              onDeleteNote={() => {}}
+              onUpdateNoteText={() => {}}
+            />
+          </div>
+        )}
       </main>
 
       {isVoiceRecordingOpen && (
@@ -358,26 +407,6 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
           onCancel={() => setIsVoiceRecordingOpen(false)}
         />
       )}
-
-      {/* Color Grading Panel */}
-      <ColorGradingPanel
-        isOpen={isGradeOpen}
-        onClose={() => {
-          setIsGradeOpen(false);
-          setLivePreviewGrade(null);
-        }}
-        currentGrade={activeGrade}
-        onApplyGrade={(grade, applyScope) => {
-          setActiveGrade(grade);
-          setLivePreviewGrade(null);
-          handleAddNote({
-            category: 'color',
-            presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Grade',
-            text: `Exposure: ${grade.brightness - 100 > 0 ? `+${grade.brightness - 100}` : grade.brightness - 100}%, Contrast: ${grade.contrast}%, Sat: ${grade.saturation}%`,
-          });
-        }}
-        onLivePreviewChange={setLivePreviewGrade}
-      />
 
       {isExportOpen && (
         <ExportModal

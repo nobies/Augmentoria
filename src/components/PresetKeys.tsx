@@ -9,9 +9,6 @@ import {
   PenTool,
   Mic,
   Send,
-  Sliders,
-  Image as ImageIcon,
-  CheckCircle,
 } from 'lucide-react';
 
 export interface CategoryPreset {
@@ -147,9 +144,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
 
   const handleKeyClick = (keyLabel: string) => {
     setSelectedKey(keyLabel);
-  };
-
-  const handleQuickAdd = (keyLabel: string) => {
+    // Instant add note on click with current text (if any) or preset label
     onAddNote({
       category: activeCategory,
       presetLabel: keyLabel,
@@ -173,10 +168,10 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
   };
 
   return (
-    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-4 flex flex-col gap-3 shadow-xl">
-      {/* Top Header: Category Tabs & Range Indicators */}
+    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-4 flex flex-col gap-3 shadow-2xl">
+      {/* Top Header: Department Tabs & Active Timecode Display */}
       <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[#1d2538] pb-3">
-        {/* Department Tabs */}
+        {/* Category Tabs */}
         <div className="flex items-center gap-1.5 bg-[#0b0f17] p-1 rounded-xl border border-[#1e273b]">
           {PRESET_CATEGORIES.map(cat => {
             const CatIcon = cat.icon;
@@ -188,15 +183,15 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
                   setActiveCategory(cat.id as any);
                   setSelectedKey('Flag');
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   isSelected
                     ? cat.id === 'editorial'
-                      ? 'bg-blue-600 text-white shadow'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40'
                       : cat.id === 'vfx'
-                      ? 'bg-purple-600 text-white shadow'
+                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                       : cat.id === 'color'
-                      ? 'bg-orange-600 text-white shadow'
-                      : 'bg-emerald-600 text-white shadow'
+                      ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40'
+                      : 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40'
                     : 'text-slate-400 hover:text-white hover:bg-[#151c2c]'
                 }`}
               >
@@ -207,10 +202,10 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           })}
         </div>
 
-        {/* Current Timecode & Range indicator */}
+        {/* Current Timecode & Range info */}
         <div className="flex items-center gap-2">
           {inTc && (
-            <div className="flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300">
+            <div className="flex items-center gap-1 text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300">
               <span>IN: {inTc}</span>
               {outTc && <span>→ OUT: {outTc}</span>}
               <button
@@ -222,13 +217,13 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
               </button>
             </div>
           )}
-          <div className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-[#161e2e] border border-[#26334d] text-blue-400">
+          <div className="text-xs font-mono font-black px-3 py-1 rounded-lg bg-[#161e2e] border border-[#26334d] text-blue-400 tracking-wider">
             {currentTc}
           </div>
         </div>
       </div>
 
-      {/* Preset Action Keys Grid */}
+      {/* Preset Action Keys Grid (Dropmedia 72px Tactile Console Buttons) */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
         {currentCategoryObj.keys.map(k => {
           const isSelected = selectedKey === k;
@@ -236,45 +231,48 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
             <button
               key={k}
               onClick={() => handleKeyClick(k)}
-              onDoubleClick={() => handleQuickAdd(k)}
-              className={`px-2.5 py-2 rounded-xl text-xs font-semibold text-center transition border ${
+              className={`h-[68px] rounded-xl border px-3 text-center text-xs font-bold leading-snug transition-all active:scale-95 flex items-center justify-center relative overflow-hidden group ${
                 isSelected
-                  ? 'bg-blue-600/20 border-blue-500 text-blue-300 shadow-md'
-                  : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:bg-[#1c2438] hover:text-white hover:border-[#2f3d5c]'
+                  ? 'bg-blue-600/25 border-blue-400 text-white shadow-xl shadow-blue-900/20'
+                  : 'bg-[#141b29] border-[#222c42] text-slate-200 hover:bg-[#1c2438] hover:border-slate-500 hover:text-white'
               }`}
-              title="Click to select, double click to instant add"
+              title={`Click to stamp [${k}] at ${currentTc}`}
             >
-              {k}
+              <span>{k}</span>
+              {/* Quick stamp hint */}
+              <span className="absolute bottom-1 right-1.5 text-[9px] text-slate-500 opacity-0 group-hover:opacity-100 font-mono">
+                Stamp
+              </span>
             </button>
           );
         })}
       </div>
 
-      {/* Input & Attachments Bar */}
+      {/* Custom Comment & Media Input Bar */}
       <form onSubmit={handleSubmit} className="flex items-center gap-2 pt-2 border-t border-[#1d2538]">
-        {/* Drawing Badge if attached */}
+        {/* Drawing Snapshot Badge */}
         {activeDrawingSnapshot && (
           <div className="relative group shrink-0">
             <img
               src={activeDrawingSnapshot}
               alt="Attached Drawing"
-              className="w-9 h-9 object-cover rounded-lg border border-amber-500/50"
+              className="w-10 h-10 object-cover rounded-lg border border-amber-500"
             />
             <button
               type="button"
               onClick={onClearDrawingSnapshot}
-              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center"
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center shadow"
             >
               ×
             </button>
           </div>
         )}
 
-        {/* Voice Note Badge if attached */}
+        {/* Voice Note Badge */}
         {activeAudioBlob && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-semibold shrink-0">
-            <Mic className="w-3.5 h-3.5 animate-pulse text-red-400" />
-            <span>Voice Audio</span>
+          <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-bold shrink-0">
+            <Mic className="w-4 h-4 animate-pulse text-red-400" />
+            <span>Voice Clip Ready</span>
             <button
               type="button"
               onClick={onClearAudioBlob}
@@ -285,49 +283,49 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           </div>
         )}
 
-        {/* Custom Text Comment Input */}
+        {/* Text Input */}
         <input
           type="text"
           value={customText}
           onChange={e => setCustomText(e.target.value)}
-          placeholder={`Add comment for [${selectedKey}] at ${currentTc}...`}
-          className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#0e131d] border border-[#222c42] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
+          placeholder={`Type custom comment for timestamp ${currentTc}...`}
+          className="flex-1 px-4 py-2.5 rounded-xl bg-[#090d14] border border-[#222c42] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
         />
 
-        {/* Draw on Frame Button */}
+        {/* Draw on Freeze Frame Button */}
         <button
           type="button"
           onClick={onStartDrawing}
-          className={`p-2.5 rounded-xl border transition ${
+          className={`p-2.5 rounded-xl border transition active:scale-95 ${
             activeDrawingSnapshot
-              ? 'bg-amber-500/20 border-amber-500 text-amber-400'
-              : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:text-amber-400 hover:border-amber-500/30'
+              ? 'bg-amber-500/25 border-amber-500 text-amber-400'
+              : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:text-amber-400 hover:border-amber-500/40'
           }`}
-          title="Draw on video freeze-frame"
+          title="Draw on freeze-frame"
         >
           <PenTool className="w-4 h-4" />
         </button>
 
-        {/* Voice Record Button */}
+        {/* Record Voice Note Button */}
         <button
           type="button"
           onClick={onStartVoiceRecording}
-          className={`p-2.5 rounded-xl border transition ${
+          className={`p-2.5 rounded-xl border transition active:scale-95 ${
             activeAudioBlob
-              ? 'bg-red-500/20 border-red-500 text-red-400'
-              : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:text-red-400 hover:border-red-500/30'
+              ? 'bg-red-500/25 border-red-500 text-red-400'
+              : 'bg-[#151b29] border-[#222c42] text-slate-300 hover:text-red-400 hover:border-red-500/40'
           }`}
-          title="Record audio voice note"
+          title="Record voice comment"
         >
           <Mic className="w-4 h-4" />
         </button>
 
-        {/* Add Note Submit Button */}
+        {/* Add Note Button */}
         <button
           type="submit"
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/30 transition active:scale-95 shrink-0"
         >
-          <Send className="w-3.5 h-3.5" />
+          <Send className="w-4 h-4" />
           <span>Add Note</span>
         </button>
       </form>

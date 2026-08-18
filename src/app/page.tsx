@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from '@/components/Header';
+import { MediaSourceBar } from '@/components/MediaSourceBar';
 import { VideoPlayer, VideoPlayerHandle } from '@/components/VideoPlayer';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
 import { PresetKeys } from '@/components/PresetKeys';
@@ -111,6 +112,71 @@ export default function Home() {
     }
     init();
   }, []);
+
+  // Direct Update Source from MediaSourceBar (Vimeo, YouTube, Local, Standalone)
+  const handleUpdateSource = async (
+    url: string,
+    provider: 'local' | 'youtube' | 'vimeo' | 'standalone'
+  ) => {
+    if (!activeCut) return;
+    const updatedCut: Cut = {
+      ...activeCut,
+      provider,
+      videoUrl: url,
+    };
+    await saveCut(updatedCut);
+    setActiveCut(updatedCut);
+    setCuts(prev => prev.map(c => (c.id === updatedCut.id ? updatedCut : c)));
+    setCurrentTime(0);
+    setInTime(null);
+    setOutTime(null);
+    if (videoPlayerRef.current) {
+      videoPlayerRef.current.seekTo(0);
+    }
+  };
+
+  // Direct Update FPS
+  const handleUpdateFps = async (newFps: number) => {
+    if (!activeProject) return;
+    const updatedProj: Project = { ...activeProject, fps: newFps };
+    await saveProject(updatedProj);
+    setActiveProject(updatedProj);
+    setProjects(prev => prev.map(p => (p.id === updatedProj.id ? updatedProj : p)));
+  };
+
+  // Direct Update Start TC
+  const handleUpdateStartTc = async (newStartTc: string) => {
+    if (!activeProject) return;
+    const updatedProj: Project = { ...activeProject, startTimecode: newStartTc };
+    await saveProject(updatedProj);
+    setActiveProject(updatedProj);
+    setProjects(prev => prev.map(p => (p.id === updatedProj.id ? updatedProj : p)));
+  };
+
+  // Direct Update Drop Frame
+  const handleUpdateDropFrame = async (df: boolean) => {
+    if (!activeProject) return;
+    const updatedProj: Project = { ...activeProject, dropFrame: df };
+    await saveProject(updatedProj);
+    setActiveProject(updatedProj);
+    setProjects(prev => prev.map(p => (p.id === updatedProj.id ? updatedProj : p)));
+  };
+
+  // Direct File Upload from Top Bar
+  const handleUploadFile = async (file: File) => {
+    if (!activeCut) return;
+    const vUrl = await saveLocalVideoFile(activeCut.id, file);
+    setLocalVideoUrl(vUrl);
+    const updatedCut: Cut = {
+      ...activeCut,
+      provider: 'local',
+      videoUrl: file.name,
+    };
+    await saveCut(updatedCut);
+    setActiveCut(updatedCut);
+    setCuts(prev => prev.map(c => (c.id === updatedCut.id ? updatedCut : c)));
+    setCurrentTime(0);
+  };
 
   // Switch Cut
   const handleSelectCut = async (cut: Cut) => {
@@ -299,7 +365,6 @@ export default function Home() {
     await saveProject(newProj);
     setProjects(prev => [newProj, ...prev]);
 
-    // Create default cut for it
     const newCut: Cut = {
       id: `cut_${Date.now()}`,
       projectId: newId,
@@ -368,7 +433,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#090c13] text-slate-100">
-      {/* Studio Header */}
+      {/* Top Header */}
       <Header
         currentTool={currentTool}
         onSelectTool={setCurrentTool}
@@ -380,119 +445,138 @@ export default function Home() {
         onOpenExport={() => setIsExportOpen(true)}
       />
 
-      {/* Main Workspace Area */}
+      {/* Main Screener Workspace */}
       {currentTool === 'screener' ? (
-        <main className="flex-1 p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1700px] w-full mx-auto">
-          {/* Left / Center Column (Player + Timeline + Presets): 7 cols on large screens */}
-          <div className="lg:col-span-7 flex flex-col gap-4">
-            {/* Video Player Container */}
-            <div className="relative">
-              {activeCut && activeProject ? (
-                <VideoPlayer
-                  ref={videoPlayerRef}
-                  cut={activeCut}
+        <main className="flex-1 p-4 lg:p-6 flex flex-col gap-4 max-w-[1700px] w-full mx-auto">
+          {/* Prominent Media Source & Sync Bar */}
+          {activeCut && activeProject && (
+            <MediaSourceBar
+              currentUrl={activeCut.videoUrl || ''}
+              provider={activeCut.provider}
+              fps={activeProject.fps}
+              dropFrame={activeProject.dropFrame}
+              startTc={activeProject.startTimecode}
+              onUpdateSource={handleUpdateSource}
+              onUpdateFps={handleUpdateFps}
+              onUpdateStartTc={handleUpdateStartTc}
+              onUpdateDropFrame={handleUpdateDropFrame}
+              onUploadFile={handleUploadFile}
+            />
+          )}
+
+          {/* Core 2-Column Studio Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+            {/* Left / Center Column (Video Player + Timeline + Presets): 7 cols */}
+            <div className="lg:col-span-7 flex flex-col gap-4">
+              {/* Video Player Box with Freeze-frame Drawing Overlay */}
+              <div className="relative">
+                {activeCut && activeProject ? (
+                  <VideoPlayer
+                    ref={videoPlayerRef}
+                    cut={activeCut}
+                    project={activeProject}
+                    localVideoUrl={localVideoUrl}
+                    onTimeUpdate={setCurrentTime}
+                    onDurationChange={setDuration}
+                    onMarkIn={handleMarkIn}
+                    onMarkOut={handleMarkOut}
+                  />
+                ) : (
+                  <div className="aspect-video bg-[#111622] rounded-2xl flex items-center justify-center border border-[#1e273b] text-slate-500">
+                    Select a project to start
+                  </div>
+                )}
+
+                {/* On-Screen Freeze-Frame Drawing Canvas */}
+                {isDrawingOpen && (
+                  <AnnotationCanvas
+                    isOpen={isDrawingOpen}
+                    videoElement={videoPlayerRef.current?.getVideoElement() || null}
+                    onSaveDrawing={(drawingDataUrl, snapshotDataUrl) => {
+                      setActiveDrawingSnapshot(snapshotDataUrl);
+                      setIsDrawingOpen(false);
+                    }}
+                    onCancel={() => setIsDrawingOpen(false)}
+                  />
+                )}
+              </div>
+
+              {/* Timeline Scrubber */}
+              {activeProject && (
+                <TimelineScrubber
+                  currentTime={currentTime}
+                  duration={duration}
                   project={activeProject}
-                  localVideoUrl={localVideoUrl}
-                  onTimeUpdate={setCurrentTime}
-                  onDurationChange={setDuration}
-                  onMarkIn={handleMarkIn}
-                  onMarkOut={handleMarkOut}
+                  notes={notes}
+                  inTime={inTime}
+                  outTime={outTime}
+                  onSeek={sec => {
+                    if (videoPlayerRef.current) {
+                      videoPlayerRef.current.seekTo(sec);
+                    }
+                  }}
+                  onSelectNote={handleSeekToNote}
                 />
-              ) : (
-                <div className="aspect-video bg-[#111622] rounded-2xl flex items-center justify-center border border-[#1e273b] text-slate-500">
-                  Select a project to start
-                </div>
               )}
 
-              {/* On-Screen Freeze-Frame Drawing Canvas Overlay */}
-              {isDrawingOpen && (
-                <AnnotationCanvas
-                  isOpen={isDrawingOpen}
-                  videoElement={videoPlayerRef.current?.getVideoElement() || null}
-                  onSaveDrawing={(drawingDataUrl, snapshotDataUrl) => {
-                    setActiveDrawingSnapshot(snapshotDataUrl);
-                    setIsDrawingOpen(false);
+              {/* Voice Recorder Panel */}
+              {isVoiceRecordingOpen && (
+                <VoiceRecorder
+                  onSaveAudio={(blob, url) => {
+                    setActiveAudioBlob(blob);
+                    setIsVoiceRecordingOpen(false);
                   }}
-                  onCancel={() => setIsDrawingOpen(false)}
+                  onCancel={() => setIsVoiceRecordingOpen(false)}
                 />
               )}
+
+              {/* Preset Action Keys & Quick Form */}
+              <PresetKeys
+                currentTc={currentTc}
+                inTc={inTc}
+                outTc={outTc}
+                onClearRange={handleClearRange}
+                onAddNote={handleAddNote}
+                onStartDrawing={() => {
+                  videoPlayerRef.current?.pause();
+                  setIsDrawingOpen(true);
+                }}
+                onStartVoiceRecording={() => {
+                  videoPlayerRef.current?.pause();
+                  setIsVoiceRecordingOpen(true);
+                }}
+                activeDrawingSnapshot={activeDrawingSnapshot}
+                activeAudioBlob={activeAudioBlob}
+                onClearDrawingSnapshot={() => setActiveDrawingSnapshot(null)}
+                onClearAudioBlob={() => setActiveAudioBlob(null)}
+              />
             </div>
 
-            {/* Timeline Scrubber */}
-            {activeProject && (
-              <TimelineScrubber
-                currentTime={currentTime}
-                duration={duration}
-                project={activeProject}
+            {/* Right Column (Review Notes Log): 5 cols */}
+            <div className="lg:col-span-5 h-[calc(100vh-10rem)] sticky top-20 flex flex-col">
+              <NotesList
                 notes={notes}
-                inTime={inTime}
-                outTime={outTime}
-                onSeek={sec => {
-                  if (videoPlayerRef.current) {
-                    videoPlayerRef.current.seekTo(sec);
-                  }
-                }}
-                onSelectNote={handleSeekToNote}
+                onSeekToNote={handleSeekToNote}
+                onToggleResolved={handleToggleResolved}
+                onDeleteNote={handleDeleteNote}
+                onUpdateNoteText={handleUpdateNoteText}
               />
-            )}
-
-            {/* Voice Recorder Panel (if open) */}
-            {isVoiceRecordingOpen && (
-              <VoiceRecorder
-                onSaveAudio={(blob, url) => {
-                  setActiveAudioBlob(blob);
-                  setIsVoiceRecordingOpen(false);
-                }}
-                onCancel={() => setIsVoiceRecordingOpen(false)}
-              />
-            )}
-
-            {/* Preset Action Keys & Note Input Form */}
-            <PresetKeys
-              currentTc={currentTc}
-              inTc={inTc}
-              outTc={outTc}
-              onClearRange={handleClearRange}
-              onAddNote={handleAddNote}
-              onStartDrawing={() => {
-                videoPlayerRef.current?.pause();
-                setIsDrawingOpen(true);
-              }}
-              onStartVoiceRecording={() => {
-                videoPlayerRef.current?.pause();
-                setIsVoiceRecordingOpen(true);
-              }}
-              activeDrawingSnapshot={activeDrawingSnapshot}
-              activeAudioBlob={activeAudioBlob}
-              onClearDrawingSnapshot={() => setActiveDrawingSnapshot(null)}
-              onClearAudioBlob={() => setActiveAudioBlob(null)}
-            />
-          </div>
-
-          {/* Right Column (Notes List & Filtered Cards): 5 cols */}
-          <div className="lg:col-span-5 h-[calc(100vh-6rem)] sticky top-20 flex flex-col">
-            <NotesList
-              notes={notes}
-              onSeekToNote={handleSeekToNote}
-              onToggleResolved={handleToggleResolved}
-              onDeleteNote={handleDeleteNote}
-              onUpdateNoteText={handleUpdateNoteText}
-            />
+            </div>
           </div>
         </main>
       ) : (
-        /* Placeholder view for other suite tools (Frames, Cutsheet, Reframe, etc.) */
+        /* Suite Placeholder for other tools */
         <main className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-          <div className="p-4 rounded-2xl bg-[#141b29] border border-[#222c42] max-w-md shadow-2xl">
-            <h3 className="text-base font-bold text-white mb-1 capitalize">
+          <div className="p-6 rounded-2xl bg-[#141b29] border border-[#222c42] max-w-md shadow-2xl">
+            <h3 className="text-base font-bold text-white mb-2 capitalize">
               {currentTool.replace('-', ' ')} Tool
             </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Integrated inside Media Dashboard Hub. Switch back to Screener to continue review notes or prepare this module next.
+            <p className="text-xs text-slate-400 mb-5">
+              Integrated inside Media Dashboard Suite. Return to Screener to review notes or start building this tool next.
             </p>
             <button
               onClick={() => setCurrentTool('screener')}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition"
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-lg shadow-blue-900/30"
             >
               Back to Screener
             </button>
@@ -500,7 +584,7 @@ export default function Home() {
         </main>
       )}
 
-      {/* Studio Branding Modal (Studio Bundle) */}
+      {/* Studio Branding Modal */}
       <StudioBrandingModal
         isOpen={isBrandingOpen}
         onClose={() => setIsBrandingOpen(false)}

@@ -27,27 +27,31 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   onSaveDrawing,
   onCancel,
 }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>('arrow');
   const [color, setColor] = useState<string>('#ef4444');
-  const [strokeWidth, setStrokeWidth] = useState<number>(3);
+  const [strokeWidth, setStrokeWidth] = useState<number>(4);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [history, setHistory] = useState<ImageData[]>([]);
 
+  // Fixed internal coordinate space (1920x1080) for high-definition drawing
+  const CANVAS_WIDTH = 1920;
+  const CANVAS_HEIGHT = 1080;
+
   useEffect(() => {
-    if (isOpen && canvasRef.current && videoElement) {
+    if (isOpen && canvasRef.current) {
       const canvas = canvasRef.current;
-      canvas.width = videoElement.videoWidth || videoElement.clientWidth || 1280;
-      canvas.height = videoElement.videoHeight || videoElement.clientHeight || 720;
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // Save blank state to history
-        setHistory([ctx.getImageData(0, 0, canvas.width, canvas.height)]);
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        setHistory([ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)]);
       }
     }
-  }, [isOpen, videoElement]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -56,7 +60,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      setHistory(prev => [...prev.slice(-10), ctx.getImageData(0, 0, canvas.width, canvas.height)]);
+      setHistory(prev => [...prev.slice(-15), ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)]);
     }
   };
 
@@ -66,7 +70,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (ctx) {
       const nextHistory = [...history];
-      nextHistory.pop(); // Remove current
+      nextHistory.pop();
       const prevState = nextHistory[nextHistory.length - 1];
       ctx.putImageData(prevState, 0, 0);
       setHistory(nextHistory);
@@ -78,17 +82,18 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       saveState();
     }
   };
 
-  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Convert client mouse event to internal canvas coordinates (0..1920, 0..1080)
+  const getCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
     return {
       x: (e.clientX - rect.left) * scaleX,
       y: (e.clientY - rect.top) * scaleY,
@@ -96,7 +101,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   };
 
   const startDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const coords = getCanvasCoords(e);
+    const coords = getCoords(e);
     setIsDrawing(true);
     setStartPos(coords);
 
@@ -106,7 +111,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       ctx.beginPath();
       ctx.moveTo(coords.x, coords.y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = strokeWidth;
+      ctx.lineWidth = strokeWidth * 2; // scaled for 1080p
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
     }
@@ -114,7 +119,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !startPos) return;
-    const coords = getCanvasCoords(e);
+    const coords = getCoords(e);
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -123,12 +128,11 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       ctx.lineTo(coords.x, coords.y);
       ctx.stroke();
     } else {
-      // Restore previous state for live shape preview
       if (history.length > 0) {
         ctx.putImageData(history[history.length - 1], 0, 0);
       }
       ctx.strokeStyle = color;
-      ctx.lineWidth = strokeWidth;
+      ctx.lineWidth = strokeWidth * 2;
 
       if (activeTool === 'rect') {
         ctx.strokeRect(startPos.x, startPos.y, coords.x - startPos.x, coords.y - startPos.y);
@@ -141,7 +145,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
         ctx.stroke();
       } else if (activeTool === 'arrow') {
-        drawArrow(ctx, startPos.x, startPos.y, coords.x, coords.y, strokeWidth);
+        drawArrow(ctx, startPos.x, startPos.y, coords.x, coords.y, strokeWidth * 2);
       }
     }
   };
@@ -162,7 +166,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     toy: number,
     width: number
   ) => {
-    const headlen = width * 4 + 10;
+    const headlen = width * 4 + 15;
     const angle = Math.atan2(toy - fromy, tox - fromx);
 
     ctx.beginPath();
@@ -187,20 +191,19 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
 
     const drawingDataUrl = drawingCanvas.toDataURL('image/png');
 
-    // Create composite image (Video Frame + Drawing overlay)
     const compositeCanvas = document.createElement('canvas');
-    compositeCanvas.width = drawingCanvas.width;
-    compositeCanvas.height = drawingCanvas.height;
+    compositeCanvas.width = 640;
+    compositeCanvas.height = 360;
     const cCtx = compositeCanvas.getContext('2d');
 
     if (cCtx) {
       if (videoElement && videoElement.videoWidth > 0) {
-        cCtx.drawImage(videoElement, 0, 0, compositeCanvas.width, compositeCanvas.height);
+        cCtx.drawImage(videoElement, 0, 0, 640, 360);
       } else {
-        cCtx.fillStyle = '#0f172a';
-        cCtx.fillRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+        cCtx.fillStyle = '#0b0f17';
+        cCtx.fillRect(0, 0, 640, 360);
       }
-      cCtx.drawImage(drawingCanvas, 0, 0);
+      cCtx.drawImage(drawingCanvas, 0, 0, 640, 360);
     }
 
     const snapshotDataUrl = compositeCanvas.toDataURL('image/jpeg', 0.85);
@@ -208,17 +211,20 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col bg-black/40 backdrop-blur-[2px]">
-      {/* Top Toolbar */}
-      <div className="h-12 bg-[#0e1420]/90 border-b border-[#232d44] px-4 flex items-center justify-between text-white">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-amber-400 mr-2 flex items-center gap-1.5">
+    <div
+      ref={containerRef}
+      className="absolute inset-0 z-30 flex flex-col bg-black/60 backdrop-blur-[1px] select-none"
+    >
+      {/* Top Floating Toolbar */}
+      <div className="h-12 bg-[#0c1018]/95 border-b border-[#232d44] px-4 flex items-center justify-between text-white">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
             <PenTool className="w-3.5 h-3.5" />
-            Drawing On Freeze Frame
+            Freeze Frame Markup
           </span>
 
           {/* Tools */}
-          <div className="flex items-center bg-[#171f30] rounded-lg p-0.5 border border-[#232d44]">
+          <div className="flex items-center bg-[#141b29] rounded-lg p-0.5 border border-[#232d44]">
             {[
               { id: 'arrow', icon: MoveRight, title: 'Arrow' },
               { id: 'rect', icon: Square, title: 'Rectangle Box' },
@@ -257,20 +263,20 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
           </div>
         </div>
 
-        {/* Action buttons (Undo, Clear, Cancel, Save) */}
+        {/* Actions */}
         <div className="flex items-center gap-2">
           <button
             onClick={handleUndo}
             disabled={history.length <= 1}
             title="Undo"
-            className="p-1.5 rounded-lg bg-[#171f30] hover:bg-[#202a40] text-slate-300 disabled:opacity-30 transition"
+            className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] text-slate-300 disabled:opacity-30 transition"
           >
             <Undo2 className="w-4 h-4" />
           </button>
           <button
             onClick={handleClear}
-            title="Clear all drawings"
-            className="p-1.5 rounded-lg bg-[#171f30] hover:bg-[#202a40] text-slate-300 transition"
+            title="Clear canvas"
+            className="p-1.5 rounded-lg bg-[#141b29] hover:bg-[#1f283d] text-slate-300 transition"
           >
             <Trash2 className="w-4 h-4 text-red-400" />
           </button>
@@ -291,15 +297,15 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         </div>
       </div>
 
-      {/* Canvas Area */}
-      <div className="flex-1 relative cursor-crosshair flex items-center justify-center overflow-hidden">
+      {/* Canvas Area (100% matched to Video 16:9 Aspect Ratio) */}
+      <div className="flex-1 w-full h-full relative cursor-crosshair overflow-hidden flex items-center justify-center">
         <canvas
           ref={canvasRef}
           onMouseDown={startDraw}
           onMouseMove={draw}
           onMouseUp={endDraw}
           onMouseLeave={endDraw}
-          className="max-w-full max-h-full object-contain"
+          className="w-full h-full object-contain"
         />
       </div>
     </div>

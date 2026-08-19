@@ -216,26 +216,57 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         : 'transparent'
       : 'transparent';
 
-    // Capture Thumbnail
+    // Capture Thumbnail (Safe with CORS / Tainted Canvas handling)
     const captureThumbnail = (): string => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 640;
-      canvas.height = 360;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return '';
+      try {
+        // If it's a YouTube video, use official YouTube thumbnail image URL directly
+        if (isCutYouTube && cut.videoUrl) {
+          const ytMatch = cut.videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+          if (ytMatch && ytMatch[1]) {
+            return `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+          }
+        }
 
-      if (videoRef.current && videoRef.current.videoWidth > 0) {
-        ctx.drawImage(videoRef.current, 0, 0, 640, 360);
-      } else if (vimeoPosterDataUrl) {
-        const img = new Image();
-        img.src = vimeoPosterDataUrl;
-        ctx.drawImage(img, 0, 0, 640, 360);
-      } else {
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(0, 0, 640, 360);
+        // If Vimeo poster image is available
+        if (isCutVimeo && vimeoPosterDataUrl) {
+          return vimeoPosterDataUrl;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 360;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return '';
+
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          try {
+            ctx.drawImage(videoRef.current, 0, 0, 640, 360);
+            return canvas.toDataURL('image/jpeg', 0.88);
+          } catch (taintErr) {
+            // Video is cross-origin and tainted canvas. Generate a clean dark slate fallback.
+            const cleanCanvas = document.createElement('canvas');
+            cleanCanvas.width = 640;
+            cleanCanvas.height = 360;
+            const cleanCtx = cleanCanvas.getContext('2d');
+            if (cleanCtx) {
+              cleanCtx.fillStyle = '#0b0f19';
+              cleanCtx.fillRect(0, 0, 640, 360);
+              cleanCtx.fillStyle = '#3b82f6';
+              cleanCtx.font = 'bold 20px monospace';
+              cleanCtx.fillText(cut.name || 'Video Cut', 30, 180);
+              return cleanCanvas.toDataURL('image/jpeg', 0.88);
+            }
+            return '';
+          }
+        } else {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, 640, 360);
+          return canvas.toDataURL('image/jpeg', 0.88);
+        }
+      } catch (err) {
+        console.warn('captureThumbnail caught error:', err);
+        return '';
       }
-
-      return canvas.toDataURL('image/jpeg', 0.88);
     };
 
     useImperativeHandle(ref, () => ({
@@ -1042,6 +1073,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 ref={videoRef}
                 src={videoSrc}
                 playsInline
+                crossOrigin="anonymous"
                 preload="auto"
                 onTimeUpdate={handleHtml5TimeUpdate}
                 onLoadedMetadata={handleHtml5LoadedMetadata}

@@ -689,6 +689,12 @@ function ScreenerStudioContent() {
                 outTime={outTime}
                 onTimeUpdate={setCurrentTime}
                 onDurationChange={setDuration}
+                onPlayStateChange={(playing) => {
+                  realtimeSessionRef.current?.broadcast({
+                    type: playing ? 'PLAY' : 'PAUSE',
+                    time: videoPlayerRef.current?.getCurrentTime() || 0,
+                  });
+                }}
                 onMarkIn={handleMarkIn}
                 onMarkOut={handleMarkOut}
                 onClearRange={handleClearRange}

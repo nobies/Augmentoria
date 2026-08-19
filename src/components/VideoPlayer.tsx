@@ -48,6 +48,7 @@ interface VideoPlayerProps {
   outTime?: number | null;
   onTimeUpdate: (seconds: number) => void;
   onDurationChange: (duration: number) => void;
+  onPlayStateChange?: (isPlaying: boolean) => void;
   onMarkIn: () => void;
   onMarkOut: () => void;
   onClearRange?: () => void;
@@ -70,6 +71,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       outTime,
       onTimeUpdate,
       onDurationChange,
+      onPlayStateChange,
       onMarkIn,
       onMarkOut,
       onClearRange,
@@ -104,7 +106,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
+    const [duration, setDuration] = useState<number>(cut.durationSeconds || 120);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
 
@@ -219,17 +221,44 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Capture Thumbnail (Safe with CORS / Tainted Canvas handling)
     const captureThumbnail = (): string => {
       try {
-        // If it's a YouTube video, use official YouTube thumbnail image URL directly
-        if (isCutYouTube && cut.videoUrl) {
-          const ytMatch = cut.videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
-          if (ytMatch && ytMatch[1]) {
-            return `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
-          }
-        }
-
-        // If Vimeo poster image is available
-        if (isCutVimeo && vimeoPosterDataUrl) {
-          return vimeoPosterDataUrl;
+        // For YouTube and Vimeo: generate a branded frame thumbnail with timecode
+        // (Cross-origin iframes prevent direct canvas capture)
+        if ((isCutYouTube || isCutVimeo) && !videoRef.current?.videoWidth) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 640;
+          canvas.height = 360;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return '';
+          // Dark frame background
+          ctx.fillStyle = '#0b0f19';
+          ctx.fillRect(0, 0, 640, 360);
+          // Gradient bar at bottom
+          const grad = ctx.createLinearGradient(0, 300, 0, 360);
+          grad.addColorStop(0, 'rgba(0,0,0,0)');
+          grad.addColorStop(1, 'rgba(0,0,0,0.9)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 300, 640, 60);
+          // Timecode text
+          const tc = secondsToDisplayTimecode(
+            currentTime,
+            project.fps,
+            project.startTimecode || '01:00:00:00',
+            project.dropFrame
+          );
+          ctx.fillStyle = '#3b82f6';
+          ctx.font = 'bold 28px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(tc, 320, 195);
+          // Cut name
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '14px sans-serif';
+          ctx.fillText(cut.name || 'Video', 320, 230);
+          // Provider badge
+          ctx.fillStyle = isCutYouTube ? '#FF0000' : '#1AB7EA';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText(isCutYouTube ? '▶ YouTube' : '▶ Vimeo', 16, 345);
+          return canvas.toDataURL('image/jpeg', 0.88);
         }
 
         const canvas = document.createElement('canvas');
@@ -271,7 +300,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     useImperativeHandle(ref, () => ({
       seekTo: (seconds: number) => {
-        const clamped = Math.max(0, Math.min(seconds, duration || 1000));
+        const effectiveMax = duration && duration > 0 ? duration : 3600;
+        const clamped = Math.max(0, Math.min(seconds, effectiveMax));
         setCurrentTime(clamped);
         onTimeUpdate(clamped);
 
@@ -336,6 +366,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         } catch (e) {}
       }
       setIsPlaying(true);
+      onPlayStateChange?.(true);
     };
 
     // Pause playback helper
@@ -361,6 +392,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         } catch (e) {}
       }
       setIsPlaying(false);
+      onPlayStateChange?.(false);
     };
 
     // Master Play/Pause Toggle
@@ -509,10 +541,22 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             events: {
               onReady: () => {
                 if (!isMounted) return;
-                const d = player.getDuration();
-                if (d > 0) {
-                  setDuration(d);
-                  onDurationChange(d);
+                const grabDuration = () => {
+                  try {
+                    const d = player.getDuration?.();
+                    if (d && d > 0) {
+                      setDuration(d);
+                      onDurationChange(d);
+                      return true;
+                    }
+                  } catch (e) {}
+                  return false;
+                };
+                if (!grabDuration()) {
+                  const durInterval = setInterval(() => {
+                    if (grabDuration()) clearInterval(durInterval);
+                  }, 200);
+                  setTimeout(() => clearInterval(durInterval), 5000);
                 }
               },
               onStateChange: (event: any) => {

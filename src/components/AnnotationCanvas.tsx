@@ -342,7 +342,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
   const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#ffffff'];
 
   return (
-    <div className="absolute inset-0 z-40 bg-black/75 backdrop-blur-sm flex flex-col justify-between p-3 select-none">
+    <div className="absolute inset-0 z-40 bg-black/25 flex flex-col justify-between p-3 select-none pointer-events-auto">
       {/* Top Floating Action Bar */}
       <div className="flex items-center justify-between bg-[#111723]/95 backdrop-blur-md border border-[#232d44] p-2 rounded-2xl shadow-2xl max-w-4xl mx-auto w-full z-50">
         {/* Tools Selection */}
@@ -538,8 +538,8 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         ref={containerRef}
         className="relative flex-1 w-full max-h-[82vh] flex items-center justify-center overflow-hidden my-auto"
       >
-        {/* Underlay Video Frame Background */}
-        {videoElement && videoElement.videoWidth > 0 ? (
+        {/* Underlay Video Frame Background for HTML5 video if available */}
+        {videoElement && videoElement.videoWidth > 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <canvas
               ref={node => {
@@ -553,14 +553,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
               className="w-full h-full object-contain opacity-95"
             />
           </div>
-        ) : posterDataUrl ? (
-          <img
-            src={posterDataUrl}
-            alt="Freeze Frame"
-            className="absolute inset-0 w-full h-full object-contain opacity-95 pointer-events-none"
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[#090d14]" />
         )}
 
         {/* Placed Interactive Image Overlay Container */}

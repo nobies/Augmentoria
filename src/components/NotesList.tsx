@@ -16,12 +16,15 @@ import {
   Film,
   Palette,
   Sparkles,
+  User,
 } from 'lucide-react';
 import { ReviewNote } from '@/lib/supabase';
 
 interface NotesListProps {
   notes: ReviewNote[];
   selectedNoteId: string | null;
+  currentAuthorName?: string;
+  onChangeAuthorName?: (name: string) => void;
   onSeekToNote: (note: ReviewNote) => void;
   onToggleResolved: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
@@ -31,6 +34,8 @@ interface NotesListProps {
 export const NotesList: React.FC<NotesListProps> = ({
   notes,
   selectedNoteId,
+  currentAuthorName = 'Reviewer',
+  onChangeAuthorName,
   onSeekToNote,
   onToggleResolved,
   onDeleteNote,
@@ -42,12 +47,15 @@ export const NotesList: React.FC<NotesListProps> = ({
   const [editText, setEditText] = useState<string>('');
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isEditingAuthor, setIsEditingAuthor] = useState(false);
+  const [authorInput, setAuthorInput] = useState(currentAuthorName);
 
   const filteredNotes = notes.filter(n => {
     const matchesCat = filterCat === 'all' || n.category === filterCat;
     const matchesSearch =
       n.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
       n.presetLabel.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      n.authorName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       n.timecode.includes(searchQuery);
     return matchesCat && matchesSearch;
   });
@@ -60,6 +68,14 @@ export const NotesList: React.FC<NotesListProps> = ({
   const handleSaveEdit = (id: string) => {
     onUpdateNoteText(id, editText);
     setEditingId(null);
+  };
+
+  const handleSaveAuthor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onChangeAuthorName && authorInput.trim()) {
+      onChangeAuthorName(authorInput.trim());
+    }
+    setIsEditingAuthor(false);
   };
 
   const togglePlayAudio = (noteId: string, audioUrl?: string) => {
@@ -105,16 +121,47 @@ export const NotesList: React.FC<NotesListProps> = ({
           </div>
         </div>
 
-        {/* Search input */}
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search notes, timecodes, keywords..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1 rounded-xl bg-[#090d14] border border-[#1e273b] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
-          />
+        {/* Current Reviewer Name Badge & Search input */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search notes, authors, timecodes..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1 rounded-xl bg-[#090d14] border border-[#1e273b] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+            />
+          </div>
+
+          {/* Reviewer Name Pill */}
+          {isEditingAuthor ? (
+            <form onSubmit={handleSaveAuthor} className="flex items-center gap-1">
+              <input
+                type="text"
+                value={authorInput}
+                onChange={e => setAuthorInput(e.target.value)}
+                className="w-24 px-1.5 py-1 rounded bg-[#090d14] border border-blue-500 text-[10px] text-white focus:outline-none"
+                autoFocus
+              />
+              <button type="submit" className="p-1 rounded bg-blue-600 text-white">
+                <Check className="w-3 h-3" />
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setAuthorInput(currentAuthorName);
+                setIsEditingAuthor(true);
+              }}
+              className="flex items-center gap-1 px-2 py-1 rounded-xl bg-[#151c2a] hover:bg-[#1f2a3d] border border-[#232d44] text-[10px] font-bold text-slate-300 transition shrink-0"
+              title="Change your reviewer name for comments"
+            >
+              <User className="w-3 h-3 text-blue-400" />
+              <span className="max-w-[70px] truncate">{currentAuthorName}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -285,6 +332,19 @@ export const NotesList: React.FC<NotesListProps> = ({
                         <audio id={`audio-${n.id}`} src={n.audioBlobUrl} onEnded={() => setPlayingAudioId(null)} className="hidden" />
                       </div>
                     )}
+
+                    {/* Author & Timestamp Footer */}
+                    <div className="flex items-center justify-between text-[9px] text-slate-500 pt-1 mt-0.5 border-t border-[#1a2336]/60">
+                      <span className="flex items-center gap-1 font-semibold text-slate-400">
+                        <User className="w-2.5 h-2.5 text-blue-400" />
+                        <span>{n.authorName || 'Reviewer'}</span>
+                      </span>
+                      {n.createdAt && (
+                        <span className="text-[8px] font-mono text-slate-500">
+                          {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

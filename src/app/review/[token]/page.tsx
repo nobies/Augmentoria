@@ -10,41 +10,54 @@ import { VoiceRecorder } from '@/components/VoiceRecorder';
 import { ExportModal } from '@/components/ExportModal';
 import { MediaToolsStrip } from '@/components/MediaToolsStrip';
 import { ColorGradingPanel, ColorGradeSettings, DEFAULT_GRADE } from '@/components/ColorGradingPanel';
+import { Film, Radio, ShieldCheck, User } from 'lucide-react';
 
-import { Project, Cut, ReviewNote, StudioBranding } from '@/lib/supabase';
+import {
+  Project,
+  Cut,
+  ReviewNote,
+  StudioBranding,
+} from '@/lib/supabase';
+
 import {
   getStudioBranding,
   getAllProjects,
   getCutsForProject,
-  getLocalVideoBlobUrl,
   getNotesForCut,
   saveReviewNote,
   deleteReviewNote as dbDeleteNote,
+  getLocalVideoBlobUrl,
   saveAudioBlob,
 } from '@/lib/storage';
 
-import { secondsToDisplayTimecode, timecodeToFrames } from '@/lib/timecode';
-import { Film, Shield, Lock, Radio } from 'lucide-react';
+import {
+  secondsToDisplayTimecode,
+  timecodeToFrames,
+} from '@/lib/timecode';
+
+import { createRealtimeSession, SyncEvent } from '@/lib/realtimeSync';
 
 interface ReviewPageProps {
-  params: Promise<{ token: string }>;
+  params: Promise<{
+    token: string;
+  }>;
 }
 
-function decodeToken(token: string): any {
+// Portable base64url JSON decoder
+function decodeToken(token: string) {
   try {
-    let base64 = token.replace(/-/g, '+').replace(/_/g, '/');
-    while (base64.length % 4) base64 += '=';
-    const decodedStr = atob(base64);
+    const base64 = token.replace(/-/g, '+').replace(/_/g, '/');
     const jsonStr = decodeURIComponent(
-      Array.prototype.map
-        .call(decodedStr, (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
     );
     return JSON.parse(jsonStr);
   } catch (e) {
     try {
-      return JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-    } catch (err) {
+      return JSON.parse(atob(token));
+    } catch {
       return null;
     }
   }
@@ -56,6 +69,9 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Client Reviewer Name
+  const [authorName, setAuthorName] = useState<string>('Client');
 
   const [project, setProject] = useState<Project | null>(null);
   const [cut, setCut] = useState<Cut | null>(null);
@@ -105,6 +121,8 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
   const [activeAudioBlob, setActiveAudioBlob] = useState<Blob | null>(null);
 
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null);
+  const realtimeSessionRef = useRef<{ broadcast: (e: any) => void; cleanup: () => void } | null>(null);
+  const localUserIdRef = useRef<string>(`client_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
 
   useEffect(() => {
     async function loadClientSession() {
@@ -118,7 +136,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
 
         if (decoded.p) setPermissions(decoded.p);
 
-        // 1. Branding (from token or local fallback)
+        // 1. Branding
         if (decoded.branding) {
           setBranding(decoded.branding);
         } else {
@@ -126,7 +144,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
           setBranding(b);
         }
 
-        // 2. Project (from token payload if provided, or from local storage)
+        // 2. Project
         let foundProj: Project | null = null;
         if (decoded.project) {
           foundProj = decoded.project;
@@ -142,7 +160,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
         }
         setProject(foundProj);
 
-        // 3. Cut (from token payload if provided, or from local storage)
+        // 3. Cut
         let foundCut: Cut | null = null;
         if (decoded.cut) {
           foundCut = decoded.cut;
@@ -162,7 +180,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
         const vUrl = await getLocalVideoBlobUrl(foundCut.id);
         if (vUrl) setLocalVideoUrl(vUrl);
 
-        // 4. Notes (from token payload if provided, or from local storage)
+        // 4. Notes
         if (decoded.notes && Array.isArray(decoded.notes)) {
           setNotes(decoded.notes);
         } else {
@@ -179,6 +197,40 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
     loadClientSession();
   }, [token]);
 
+  // Connect to Realtime Session Room for Live Playhead and Notes Sync
+  useEffect(() => {
+    if (!cut) return;
+
+    const roomId = cut.id;
+    const session = createRealtimeSession(
+      roomId,
+      localUserIdRef.current,
+      authorName,
+      (event: SyncEvent) => {
+        if (event.type === 'SEEK' && typeof event.time === 'number') {
+          videoPlayerRef.current?.seekTo(event.time);
+          setCurrentTime(event.time);
+        } else if (event.type === 'PLAY') {
+          videoPlayerRef.current?.play();
+        } else if (event.type === 'PAUSE') {
+          videoPlayerRef.current?.pause();
+        } else if (event.type === 'NOTE_UPSERT' && event.note) {
+          setNotes(prev => {
+            const filtered = prev.filter(n => n.id !== event.note?.id);
+            return [...filtered, event.note!].sort((a, b) => a.frameNumber - b.frameNumber);
+          });
+        } else if (event.type === 'NOTE_DELETE' && event.noteId) {
+          setNotes(prev => prev.filter(n => n.id !== event.noteId));
+        }
+      }
+    );
+
+    realtimeSessionRef.current = session;
+    return () => {
+      session.cleanup();
+    };
+  }, [cut?.id, authorName]);
+
   if (loading) {
     return (
       <div className="h-screen bg-[#090c13] flex items-center justify-center text-slate-400 font-mono text-xs">
@@ -190,11 +242,10 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
 
   if (error || !project || !cut) {
     return (
-      <div className="h-screen bg-[#090c13] flex items-center justify-center p-4">
-        <div className="p-6 rounded-2xl bg-[#141b29] border border-[#222c42] text-center max-w-sm">
-          <Lock className="w-10 h-10 text-red-400 mx-auto mb-2" />
-          <h3 className="text-sm font-bold text-white mb-1">Access Restricted</h3>
-          <p className="text-xs text-slate-400">{error || 'Review link is unavailable.'}</p>
+      <div className="h-screen bg-[#090c13] flex flex-col items-center justify-center p-4 text-center">
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 max-w-md space-y-2">
+          <h2 className="text-sm font-bold">Access Restricted</h2>
+          <p className="text-xs text-slate-400">{error || 'Unable to load project media cut.'}</p>
         </div>
       </div>
     );
@@ -207,10 +258,39 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
     project.dropFrame
   );
 
-  const handleAddNote = async (data: any) => {
+  const inTc =
+    inTime !== null
+      ? secondsToDisplayTimecode(
+          inTime,
+          project.fps,
+          project.startTimecode,
+          project.dropFrame
+        )
+      : null;
+
+  const outTc =
+    outTime !== null
+      ? secondsToDisplayTimecode(
+          outTime,
+          project.fps,
+          project.startTimecode,
+          project.dropFrame
+        )
+      : null;
+
+  // Add Note Handler
+  const handleAddNote = async (data: {
+    category: 'editorial' | 'vfx' | 'color' | 'sound' | 'general';
+    presetLabel: string;
+    text: string;
+    colorGrade?: ColorGradeSettings;
+    stillImageUrl?: string;
+    audioBlob?: Blob;
+    drawingData?: string;
+  }) => {
     if (permissions.viewOnly || !permissions.canComment) return;
 
-    const noteId = `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const noteId = `note_client_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     let audioUrl: string | undefined = undefined;
 
     if (data.audioBlob) {
@@ -224,7 +304,21 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
       project.startTimecode,
       project.dropFrame
     );
+
     const frameNum = timecodeToFrames(noteTc, project.fps, project.dropFrame);
+
+    let tcOut: string | undefined = undefined;
+    let frameOutNum: number | undefined = undefined;
+
+    if (outTime !== null && inTime !== null && outTime > inTime) {
+      tcOut = secondsToDisplayTimecode(
+        outTime,
+        project.fps,
+        project.startTimecode,
+        project.dropFrame
+      );
+      frameOutNum = timecodeToFrames(tcOut, project.fps, project.dropFrame);
+    }
 
     let finalThumbnail = data.stillImageUrl || activeDrawingSnapshot;
     if (!finalThumbnail && videoPlayerRef.current) {
@@ -239,17 +333,25 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
       text: data.text,
       frameNumber: frameNum,
       timecode: noteTc,
+      timecodeOut: tcOut,
+      frameOut: frameOutNum,
+      colorGrade: data.colorGrade,
       drawingData: activeDrawingVector || data.drawingData,
       stillImageUrl: finalThumbnail || undefined,
       audioBlobUrl: audioUrl,
-      colorGrade: data.colorGrade,
-      authorName: 'Client Reviewer',
+      authorName: authorName || 'Client',
       isResolved: false,
       createdAt: new Date().toISOString(),
     };
 
     await saveReviewNote(newNote);
     setNotes(prev => [...prev, newNote].sort((a, b) => a.frameNumber - b.frameNumber));
+
+    // Broadcast to real-time session
+    realtimeSessionRef.current?.broadcast({
+      type: 'NOTE_UPSERT',
+      note: newNote,
+    });
 
     setActiveDrawingSnapshot(null);
     setActiveDrawingVector(null);
@@ -267,6 +369,16 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
       text: `Exposure: ${grade.brightness}%, Contrast: ${grade.contrast}%, Saturation: ${grade.saturation}%`,
       colorGrade: grade,
     });
+  };
+
+  const handleTimelineSeek = (sec: number) => {
+    videoPlayerRef.current?.seekTo(sec);
+    if (hasControl) {
+      realtimeSessionRef.current?.broadcast({
+        type: 'SEEK',
+        time: sec,
+      });
+    }
   };
 
   return (
@@ -374,25 +486,35 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
             notes={notes}
             inTime={inTime}
             outTime={outTime}
-            onSeek={sec => videoPlayerRef.current?.seekTo(sec)}
+            onSeek={handleTimelineSeek}
             onSelectNote={n => {
               setSelectedNote(n);
               const nFrames = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-              const sFrames = timecodeToFrames(project.startTimecode || '01:00:00:00', project.fps, project.dropFrame);
-              videoPlayerRef.current?.seekTo(Math.max(0, (nFrames - sFrames) / project.fps));
+              const sFrames = timecodeToFrames(
+                project.startTimecode || '01:00:00:00',
+                project.fps,
+                project.dropFrame
+              );
+              const rSec = Math.max(0, (nFrames - sFrames) / project.fps);
+              videoPlayerRef.current?.seekTo(rSec);
+              if (hasControl) {
+                realtimeSessionRef.current?.broadcast({ type: 'SEEK', time: rSec });
+              }
             }}
           />
 
           {!permissions.viewOnly && permissions.canComment && (
             <PresetKeys
               currentTc={currentTc}
-              inTc={null}
-              outTc={null}
+              inTc={inTc}
+              outTc={outTc}
+              categories={PRESET_CATEGORIES}
               onClearRange={() => {
                 setInTime(null);
                 setOutTime(null);
               }}
               onAddNote={handleAddNote}
+              onOpenNotekeys={() => {}}
               activeDrawingSnapshot={activeDrawingSnapshot}
               activeAudioBlob={activeAudioBlob}
               onClearDrawingSnapshot={() => {
@@ -435,7 +557,6 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
           />
         )}
 
-        {/* Right: Notes List or Color Grade Panel */}
         {isGradeOpen ? (
           <ColorGradingPanel
             isOpen={isGradeOpen}
@@ -452,27 +573,54 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
             <NotesList
               notes={notes}
               selectedNoteId={selectedNote?.id || null}
+              currentAuthorName={authorName}
+              onChangeAuthorName={setAuthorName}
               onSeekToNote={n => {
                 setSelectedNote(n);
                 const nFrames = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
-                const sFrames = timecodeToFrames(project.startTimecode || '01:00:00:00', project.fps, project.dropFrame);
-                videoPlayerRef.current?.seekTo(Math.max(0, (nFrames - sFrames) / project.fps));
+                const sFrames = timecodeToFrames(
+                  project.startTimecode || '01:00:00:00',
+                  project.fps,
+                  project.dropFrame
+                );
+                const rSec = Math.max(0, (nFrames - sFrames) / project.fps);
+                videoPlayerRef.current?.seekTo(rSec);
+                if (hasControl) {
+                  realtimeSessionRef.current?.broadcast({ type: 'SEEK', time: rSec });
+                }
               }}
-              onToggleResolved={() => {}}
-              onDeleteNote={permissions.canComment ? async id => {
-                await dbDeleteNote(id);
-                setNotes(prev => prev.filter(n => n.id !== id));
-              } : () => {}}
-              onUpdateNoteText={() => {}}
+              onToggleResolved={async noteId => {
+                const t = notes.find(n => n.id === noteId);
+                if (t) {
+                  const updated = { ...t, isResolved: !t.isResolved };
+                  await saveReviewNote(updated);
+                  setNotes(prev => prev.map(n => (n.id === noteId ? updated : n)));
+                  realtimeSessionRef.current?.broadcast({ type: 'NOTE_UPSERT', note: updated });
+                }
+              }}
+              onDeleteNote={async noteId => {
+                await dbDeleteNote(noteId);
+                setNotes(prev => prev.filter(n => n.id !== noteId));
+                realtimeSessionRef.current?.broadcast({ type: 'NOTE_DELETE', noteId });
+              }}
+              onUpdateNoteText={async (noteId, newText) => {
+                const t = notes.find(n => n.id === noteId);
+                if (t) {
+                  const updated = { ...t, text: newText };
+                  await saveReviewNote(updated);
+                  setNotes(prev => prev.map(n => (n.id === noteId ? updated : n)));
+                  realtimeSessionRef.current?.broadcast({ type: 'NOTE_UPSERT', note: updated });
+                }
+              }}
             />
           </div>
         )}
       </main>
 
-      {/* Modals */}
+      {/* Voice Recorder Overlay Modal */}
       {isVoiceRecordingOpen && (
         <VoiceRecorder
-          onSaveAudio={blob => {
+          onSaveAudio={(blob, url) => {
             setActiveAudioBlob(blob);
             setIsVoiceRecordingOpen(false);
           }}
@@ -480,6 +628,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
         />
       )}
 
+      {/* Export Modal */}
       {isExportOpen && (
         <ExportModal
           isOpen={isExportOpen}

@@ -48,8 +48,13 @@ import {
   timecodeToFrames,
 } from '@/lib/timecode';
 
+import { createRealtimeSession, SyncEvent } from '@/lib/realtimeSync';
+
 export default function Home() {
   const [currentTool, setCurrentTool] = useState<string>('screener');
+
+  // Reviewer Author Name
+  const [authorName, setAuthorName] = useState<string>('Editor');
 
   // Studio Branding
   const [branding, setBranding] = useState<StudioBranding>({
@@ -102,6 +107,8 @@ export default function Home() {
   const [activeAudioBlob, setActiveAudioBlob] = useState<Blob | null>(null);
 
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null);
+  const realtimeSessionRef = useRef<{ broadcast: (e: any) => void; cleanup: () => void } | null>(null);
+  const localUserIdRef = useRef<string>(`user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
 
   // Initial Load
   useEffect(() => {
@@ -130,6 +137,40 @@ export default function Home() {
     }
     init();
   }, []);
+
+  // Initialize Realtime Sync Room for Active Cut
+  useEffect(() => {
+    if (!activeCut) return;
+
+    const roomId = activeCut.id;
+    const session = createRealtimeSession(
+      roomId,
+      localUserIdRef.current,
+      authorName,
+      (event: SyncEvent) => {
+        if (event.type === 'SEEK' && typeof event.time === 'number') {
+          videoPlayerRef.current?.seekTo(event.time);
+          setCurrentTime(event.time);
+        } else if (event.type === 'PLAY') {
+          videoPlayerRef.current?.play();
+        } else if (event.type === 'PAUSE') {
+          videoPlayerRef.current?.pause();
+        } else if (event.type === 'NOTE_UPSERT' && event.note) {
+          setNotes(prev => {
+            const filtered = prev.filter(n => n.id !== event.note?.id);
+            return [...filtered, event.note!].sort((a, b) => a.frameNumber - b.frameNumber);
+          });
+        } else if (event.type === 'NOTE_DELETE' && event.noteId) {
+          setNotes(prev => prev.filter(n => n.id !== event.noteId));
+        }
+      }
+    );
+
+    realtimeSessionRef.current = session;
+    return () => {
+      session.cleanup();
+    };
+  }, [activeCut?.id, authorName]);
 
   // Update Source
   const handleUpdateSource = async (
@@ -351,13 +392,19 @@ export default function Home() {
       drawingData: activeDrawingVector || data.drawingData,
       stillImageUrl: finalThumbnail || undefined,
       audioBlobUrl: audioUrl,
-      authorName: 'Reviewer',
+      authorName: authorName || 'Editor',
       isResolved: false,
       createdAt: new Date().toISOString(),
     };
 
     await saveReviewNote(newNote);
     setNotes(prev => [...prev, newNote].sort((a, b) => a.frameNumber - b.frameNumber));
+
+    // Broadcast note to real-time session
+    realtimeSessionRef.current?.broadcast({
+      type: 'NOTE_UPSERT',
+      note: newNote,
+    });
 
     setActiveDrawingSnapshot(null);
     setActiveDrawingVector(null);
@@ -366,11 +413,9 @@ export default function Home() {
     setOutTime(null);
   };
 
-  // Apply Color Grade to Note (Frame / In-Out Range)
+  // Apply Color Grade to Note
   const handleApplyColorGrade = (grade: ColorGradeSettings, applyScope: 'frame' | 'range' | 'master') => {
     setLivePreviewGrade(null);
-
-    // Save as a color correction review note with colorGrade object
     handleAddNote({
       category: 'color',
       presetLabel: grade.preset !== 'none' ? `Look: ${grade.preset}` : 'Color Correction',
@@ -386,6 +431,11 @@ export default function Home() {
     const updated = { ...target, isResolved: !target.isResolved };
     await saveReviewNote(updated);
     setNotes(prev => prev.map(n => (n.id === noteId ? updated : n)));
+
+    realtimeSessionRef.current?.broadcast({
+      type: 'NOTE_UPSERT',
+      note: updated,
+    });
   };
 
   // Delete Note
@@ -393,6 +443,11 @@ export default function Home() {
     await dbDeleteNote(noteId);
     setNotes(prev => prev.filter(n => n.id !== noteId));
     if (selectedNote?.id === noteId) setSelectedNote(null);
+
+    realtimeSessionRef.current?.broadcast({
+      type: 'NOTE_DELETE',
+      noteId,
+    });
   };
 
   // Update Note Text
@@ -402,6 +457,11 @@ export default function Home() {
     const updated = { ...target, text: newText };
     await saveReviewNote(updated);
     setNotes(prev => prev.map(n => (n.id === noteId ? updated : n)));
+
+    realtimeSessionRef.current?.broadcast({
+      type: 'NOTE_UPSERT',
+      note: updated,
+    });
   };
 
   // Seek to Note
@@ -418,6 +478,22 @@ export default function Home() {
     const relativeSeconds = Math.max(0, (noteFrames - startFrames) / activeProject.fps);
     videoPlayerRef.current.seekTo(relativeSeconds);
     videoPlayerRef.current.pause();
+
+    realtimeSessionRef.current?.broadcast({
+      type: 'SEEK',
+      time: relativeSeconds,
+    });
+  };
+
+  // Handle timeline seek broadcast
+  const handleTimelineSeek = (sec: number) => {
+    if (videoPlayerRef.current) {
+      videoPlayerRef.current.seekTo(sec);
+    }
+    realtimeSessionRef.current?.broadcast({
+      type: 'SEEK',
+      time: sec,
+    });
   };
 
   // Create Project
@@ -570,11 +646,7 @@ export default function Home() {
               notes={notes}
               inTime={inTime}
               outTime={outTime}
-              onSeek={sec => {
-                if (videoPlayerRef.current) {
-                  videoPlayerRef.current.seekTo(sec);
-                }
-              }}
+              onSeek={handleTimelineSeek}
               onSelectNote={handleSeekToNote}
             />
           )}
@@ -637,6 +709,8 @@ export default function Home() {
             <NotesList
               notes={notes}
               selectedNoteId={selectedNote?.id || null}
+              currentAuthorName={authorName}
+              onChangeAuthorName={setAuthorName}
               onSeekToNote={handleSeekToNote}
               onToggleResolved={handleToggleResolved}
               onDeleteNote={handleDeleteNote}

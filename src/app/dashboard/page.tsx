@@ -90,7 +90,7 @@ export default function DashboardPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white">
-              Welcome back, {currentUser?.name.split(' ')[0]} 👋
+              Welcome back, {currentUser?.name ? currentUser.name.split(' ')[0] : 'Producer'} 👋
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Manage your production deliverables, synchronized client screeners, and media assets.

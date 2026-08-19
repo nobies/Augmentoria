@@ -60,7 +60,7 @@ let dbPromise: Promise<IDBPDatabase<TenantDB>> | null = null;
 // ----------------------------------------------------
 // 10 DIVERSE STUDIOS / TENANTS
 // ----------------------------------------------------
-const SEED_COMPANIES: Company[] = [
+export const SEED_COMPANIES: Company[] = [
   {
     id: 'comp_vortex',
     name: 'Vortex Post Studios',
@@ -166,7 +166,7 @@ const SEED_COMPANIES: Company[] = [
 // ----------------------------------------------------
 // 22+ DIVERSE USERS WITH DIFFERENT ROLES & PERMISSIONS
 // ----------------------------------------------------
-const SEED_USERS: User[] = [
+export const SEED_USERS: User[] = [
   // --- Vortex Post Studios ---
   {
     id: 'user_sarah',

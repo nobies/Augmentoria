@@ -23,6 +23,8 @@ import {
   getActivityLogsByCompany,
   logActivity,
   initTenantSeed,
+  SEED_COMPANIES,
+  SEED_USERS,
 } from '@/lib/tenantStorage';
 
 interface AuthContextType {
@@ -60,11 +62,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [allCompanies, setAllCompanies] = useState<Company[]>([]);
-  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
-  const [companyUsers, setCompanyUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [allCompanies, setAllCompanies] = useState<Company[]>(SEED_COMPANIES);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(SEED_COMPANIES[0]);
+  const [companyUsers, setCompanyUsers] = useState<User[]>(
+    SEED_USERS.filter(u => u.companyId === SEED_COMPANIES[0].id)
+  );
+  const [currentUser, setCurrentUser] = useState<User | null>(SEED_USERS[0]);
   const [companyClients, setCompanyClients] = useState<Client[]>([]);
   const [companyProjects, setCompanyProjects] = useState<Project[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);

@@ -104,10 +104,40 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {/* SUPER ADMIN MASTER SHORTCUT (Global Platform Access) */}
+          <div className="p-4 rounded-3xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-purple-950/40 border border-purple-500/40 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-600 flex items-center justify-center text-white font-bold shadow-lg shadow-purple-900/50">
+                  👑
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">Platform Super Admin (Global Access)</span>
+                    <span className="px-2 py-0.2 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold">Full Control</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Controls all 10 studios, switches workspaces freely & manages global permissions.</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleMemberOneClickLogin('user_super_admin', 'comp_vortex')}
+              className="w-full py-2.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition shadow-lg shadow-purple-900/30 flex items-center justify-between group active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-2 text-left">
+                <span className="font-bold">⚡ Login as Adam Vance (Master Super Admin)</span>
+                <span className="text-[10px] text-purple-200 font-mono hidden sm:inline">admin@augmentoria.io</span>
+              </div>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+
           {/* 10 Studios Tabs */}
           <div className="space-y-3">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              1. Choose Studio Tenant ({SEED_COMPANIES.length} Available):
+              Or Choose Specific Studio Tenant ({SEED_COMPANIES.length} Studios):
             </span>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {SEED_COMPANIES.map(c => {

@@ -438,9 +438,27 @@ export default function LandingPage() {
             </div>
 
             {/* 1-Click Quick Demo Switcher */}
-            <div className="p-3.5 rounded-2xl bg-[#06080d] border border-[#141b2b] space-y-2">
+            <div className="p-3.5 rounded-2xl bg-[#06080d] border border-[#141b2b] space-y-2.5">
+              {/* Super Admin Master Shortcut */}
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('user_super_admin', 'comp_vortex')}
+                className="w-full p-2.5 rounded-xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 hover:from-purple-900/60 hover:to-indigo-900/60 border border-purple-500/40 text-left transition flex items-center justify-between shadow"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">👑</span>
+                  <div>
+                    <span className="text-xs font-bold text-white block">Adam Vance (Global Super Admin)</span>
+                    <span className="text-[9px] text-purple-300">All 10 Studios • Master Permissions</span>
+                  </div>
+                </div>
+                <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-mono font-bold">
+                  Master
+                </span>
+              </button>
+
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                ⚡ 1-Click Instant Demo Login:
+                ⚡ Studio Member Demo Profiles:
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <button

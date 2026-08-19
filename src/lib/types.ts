@@ -30,6 +30,7 @@ export interface Company {
 export interface User {
   id: string;
   companyId: string;
+  accessibleCompanyIds?: string[];
   name: string;
   email: string;
   role: UserRole;

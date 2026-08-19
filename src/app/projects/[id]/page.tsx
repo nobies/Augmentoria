@@ -273,6 +273,32 @@ export default function ProjectDetailPage() {
     );
   }
 
+  // Strict Tenant Isolation: Block members from viewing projects of other companies
+  const isUnauthorized = currentCompany && project.companyId !== currentCompany.id && currentUser?.role !== 'super_admin';
+
+  if (isUnauthorized) {
+    return (
+      <div className="min-h-screen bg-[#090c13] text-slate-100 flex flex-col">
+        <AppNavbar />
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-md mx-auto">
+          <div className="w-12 h-12 rounded-2xl bg-red-950/40 border border-red-500/40 flex items-center justify-center text-red-400">
+            <Shield className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-white">Access Restricted</h2>
+          <p className="text-xs text-slate-400">
+            This project belongs to another studio workspace. Your account ({currentUser?.name} @ {currentCompany?.name}) does not have permission to view this project.
+          </p>
+          <Link
+            href="/projects"
+            className="px-5 py-2.5 rounded-full bg-white hover:bg-slate-200 text-black text-xs font-bold transition shadow"
+          >
+            Back to {currentCompany?.name} Projects
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#090c13] text-slate-100 flex flex-col select-none">
       <AppNavbar />

@@ -16,6 +16,7 @@ import {
   Plus,
   Check,
   UserCheck,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -28,11 +29,14 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
   const {
     currentCompany,
     allCompanies,
+    availableCompanies,
     currentUser,
     companyUsers,
     switchCompany,
     switchUser,
     createNewCompany,
+    canSwitchCompany,
+    logout,
   } = useAuth();
 
   const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
@@ -82,8 +86,15 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
           <div className="relative">
             <button
               type="button"
-              onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
-              className="flex items-center gap-2 p-1.5 rounded-xl bg-[#111724] hover:bg-[#182133] border border-[#232d44] transition group"
+              onClick={() => {
+                if (canSwitchCompany) {
+                  setIsCompanyDropdownOpen(!isCompanyDropdownOpen);
+                }
+              }}
+              className={`flex items-center gap-2 p-1.5 rounded-xl bg-[#111724] border border-[#232d44] transition group ${
+                canSwitchCompany ? 'hover:bg-[#182133] cursor-pointer' : 'cursor-default'
+              }`}
+              title={canSwitchCompany ? 'Switch Studio Tenant (Super Admin)' : `${currentCompany?.name} (Locked Workspace)`}
             >
               <div
                 style={{ backgroundColor: currentCompany?.brandPrimary || '#3b82f6' }}
@@ -94,9 +105,15 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
               <div className="text-left hidden sm:block">
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-black text-white leading-none block truncate max-w-[130px]">
-                    {currentCompany?.name || 'Select Studio'}
+                    {currentCompany?.name || 'Studio'}
                   </span>
-                  <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-white transition" />
+                  {canSwitchCompany ? (
+                    <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-white transition" />
+                  ) : (
+                    <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-mono font-bold">
+                      Active
+                    </span>
+                  )}
                 </div>
                 <span className="text-[9px] text-slate-400 leading-none capitalize">
                   {currentCompany?.plan || 'pro'} Plan
@@ -104,14 +121,14 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
               </div>
             </button>
 
-            {/* Tenant Dropdown */}
-            {isCompanyDropdownOpen && (
+            {/* Tenant Dropdown (Super Admin Only) */}
+            {canSwitchCompany && isCompanyDropdownOpen && (
               <div className="absolute left-0 top-12 w-72 bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
                 <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">
-                  Switch Studio Tenant ({allCompanies.length})
+                  Switch Studio Tenant ({availableCompanies.length})
                 </div>
                 <div className="space-y-1 my-1 max-h-80 overflow-y-auto scrollbar-thin">
-                  {allCompanies.map(c => {
+                  {availableCompanies.map(c => {
                     const isSelected = c.id === currentCompany?.id;
                     return (
                       <button
@@ -236,6 +253,17 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
                       </button>
                     );
                   })}
+                </div>
+
+                <div className="pt-2 border-t border-[#1e273b] mt-2">
+                  <button
+                    type="button"
+                    onClick={() => logout()}
+                    className="w-full py-1.5 px-2 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-500/20 text-red-300 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-red-400" />
+                    <span>Sign Out & Switch Studio</span>
+                  </button>
                 </div>
               </div>
             )}

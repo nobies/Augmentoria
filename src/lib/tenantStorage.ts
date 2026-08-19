@@ -167,6 +167,18 @@ export const SEED_COMPANIES: Company[] = [
 // 22+ DIVERSE USERS WITH DIFFERENT ROLES & PERMISSIONS
 // ----------------------------------------------------
 export const SEED_USERS: User[] = [
+  // --- Platform Super Admin (Can switch between all 10 studios) ---
+  {
+    id: 'user_super_admin',
+    companyId: 'comp_vortex',
+    name: 'Adam Vance (Super Admin)',
+    email: 'admin@augmentoria.io',
+    role: 'super_admin',
+    title: 'Platform Infrastructure Super Admin',
+    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
   // --- Vortex Post Studios ---
   {
     id: 'user_sarah',
@@ -747,6 +759,32 @@ export async function saveCompany(company: Company): Promise<void> {
 // ----------------------------------------------------
 // USERS & MEMBERS
 // ----------------------------------------------------
+export async function getAllUsers(): Promise<User[]> {
+  const db = await getTenantDB();
+  if (!db) return SEED_USERS;
+  await initTenantSeed();
+  const users = await db.getAll('users');
+  return users.length > 0 ? users : SEED_USERS;
+}
+
+export async function getUserById(userId: string): Promise<User | null> {
+  const db = await getTenantDB();
+  if (!db) return SEED_USERS.find(u => u.id === userId) || null;
+  await initTenantSeed();
+  const user = await db.get('users', userId);
+  return user || SEED_USERS.find(u => u.id === userId) || null;
+}
+
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const db = await getTenantDB();
+  const lower = email.trim().toLowerCase();
+  if (!db) return SEED_USERS.find(u => u.email.toLowerCase() === lower) || null;
+  await initTenantSeed();
+  const users = await db.getAll('users');
+  const found = users.find(u => u.email.toLowerCase() === lower);
+  return found || SEED_USERS.find(u => u.email.toLowerCase() === lower) || null;
+}
+
 export async function getUsersByCompany(companyId: string): Promise<User[]> {
   const db = await getTenantDB();
   if (!db) return SEED_USERS.filter(u => u.companyId === companyId);

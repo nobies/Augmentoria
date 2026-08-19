@@ -13,6 +13,7 @@ import {
   getAllCompanies,
   getCompanyById,
   saveCompany,
+  getAllUsers,
   getUsersByCompany,
   saveUser,
   getClientsByCompany,
@@ -31,6 +32,7 @@ interface AuthContextType {
   currentUser: User | null;
   currentCompany: Company | null;
   allCompanies: Company[];
+  availableCompanies: Company[];
   companyUsers: User[];
   companyClients: Client[];
   companyProjects: Project[];
@@ -46,8 +48,11 @@ interface AuthContextType {
   canManageCompany: boolean;
   canManageProjects: boolean;
   canCreateReview: boolean;
+  canSwitchCompany: boolean;
 
   // Actions
+  login: (email: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
   switchUser: (userId: string) => Promise<void>;
   switchCompany: (companyId: string) => Promise<void>;
   refreshData: () => Promise<void>;
@@ -68,7 +73,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [companyUsers, setCompanyUsers] = useState<User[]>(
     SEED_USERS.filter(u => u.companyId === SEED_COMPANIES[0].id)
   );
-  const [currentUser, setCurrentUser] = useState<User | null>(SEED_USERS[0]);
+  const [currentUser, setCurrentUser] = useState<User | null>(SEED_USERS[1]); // Default to Sarah Jenkins (Company Admin @ Vortex)
   const [companyClients, setCompanyClients] = useState<Client[]>([]);
   const [companyProjects, setCompanyProjects] = useState<Project[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -80,8 +85,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const comps = await getAllCompanies();
     setAllCompanies(comps);
 
-    const activeComp = targetCompanyId
-      ? comps.find(c => c.id === targetCompanyId) || comps[0]
+    // Check localStorage for persisted session
+    let savedCompanyId = targetCompanyId;
+    let savedUserId = targetUserId;
+    if (typeof window !== 'undefined') {
+      if (!savedCompanyId) savedCompanyId = localStorage.getItem('augmentoria_auth_company') || undefined;
+      if (!savedUserId) savedUserId = localStorage.getItem('augmentoria_auth_user') || undefined;
+    }
+
+    const activeComp = savedCompanyId
+      ? comps.find(c => c.id === savedCompanyId) || comps[0]
       : comps[0];
     setCurrentCompany(activeComp || null);
 
@@ -89,8 +102,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const users = await getUsersByCompany(activeComp.id);
       setCompanyUsers(users);
 
-      const activeUser = targetUserId
-        ? users.find(u => u.id === targetUserId) || users[0]
+      const activeUser = savedUserId
+        ? users.find(u => u.id === savedUserId) || users[0]
         : users[0];
       setCurrentUser(activeUser || null);
 
@@ -110,6 +123,50 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadWorkspace();
   }, []);
 
+  const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    const lower = email.trim().toLowerCase();
+    const allUsers = await getAllUsers();
+    const user = allUsers.find(u => u.email.toLowerCase() === lower);
+
+    if (!user) {
+      setIsLoading(false);
+      return { success: false, error: `No account registered with ${email}` };
+    }
+
+    const comps = await getAllCompanies();
+    const userCompany = comps.find(c => c.id === user.companyId) || comps[0];
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('augmentoria_auth_user', user.id);
+      localStorage.setItem('augmentoria_auth_company', userCompany.id);
+    }
+
+    setCurrentUser(user);
+    setCurrentCompany(userCompany);
+
+    const users = await getUsersByCompany(userCompany.id);
+    setCompanyUsers(users);
+    const clients = await getClientsByCompany(userCompany.id);
+    setCompanyClients(clients);
+    const projs = await getProjectsByCompany(userCompany.id);
+    setCompanyProjects(projs);
+    const logs = await getActivityLogsByCompany(userCompany.id);
+    setActivityLogs(logs);
+
+    setIsLoading(false);
+    return { success: true };
+  };
+
+  const logout = async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('augmentoria_auth_user');
+      localStorage.removeItem('augmentoria_auth_company');
+    }
+    // Set to default guest or login
+    window.location.href = '/login';
+  };
+
   const refreshData = async () => {
     if (!currentCompany) return;
     const comps = await getAllCompanies();
@@ -125,13 +182,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const switchCompany = async (companyId: string) => {
+    // Super admins can switch anywhere; others are isolated to their own company
+    if (currentUser?.role !== 'super_admin' && currentUser?.companyId !== companyId) {
+      console.warn('Unauthorized company switch attempted for tenant:', companyId);
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('augmentoria_auth_company', companyId);
+    }
     await loadWorkspace(companyId);
   };
 
   const switchUser = async (userId: string) => {
-    const user = companyUsers.find(u => u.id === userId);
+    const allU = await getAllUsers();
+    const user = allU.find(u => u.id === userId);
     if (user) {
-      setCurrentUser(user);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('augmentoria_auth_user', user.id);
+        localStorage.setItem('augmentoria_auth_company', user.companyId);
+      }
+      await loadWorkspace(user.companyId, user.id);
     }
   };
 
@@ -283,6 +353,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const canManageCompany = isCompanyAdmin;
   const canManageProjects = isAccountManager;
   const canCreateReview = isCreative;
+  const canSwitchCompany = isSuperAdmin;
+
+  // Strict tenant isolation: Non-super-admins only see their own company
+  const availableCompanies = isSuperAdmin
+    ? allCompanies
+    : currentCompany
+    ? [currentCompany]
+    : [];
 
   return (
     <AuthContext.Provider
@@ -290,6 +368,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         currentUser,
         currentCompany,
         allCompanies,
+        availableCompanies,
         companyUsers,
         companyClients,
         companyProjects,
@@ -303,6 +382,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         canManageCompany,
         canManageProjects,
         canCreateReview,
+        canSwitchCompany,
+        login,
+        logout,
         switchUser,
         switchCompany,
         refreshData,

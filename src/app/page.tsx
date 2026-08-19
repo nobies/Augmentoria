@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { SEED_COMPANIES, SEED_USERS } from '@/lib/tenantStorage';
+import { AugmentoriaLogo } from '@/components/brand/AugmentoriaLogo';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -79,16 +80,9 @@ export default function LandingPage() {
       {/* NAVBAR */}
       {/* ---------------------------------------------------- */}
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#06080d]/80 border-b border-[#182033]/70 px-4 sm:px-8 py-3.5 flex items-center justify-between transition">
-        {/* Typographic Logo: AUGMENT:▶RIA */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 via-purple-600 to-cyan-500 flex items-center justify-center text-white font-black text-xs shadow-lg shadow-rose-900/30 group-hover:scale-105 transition">
-            ▶
-          </div>
-          <div className="flex items-center tracking-tight">
-            <span className="font-black text-lg text-white">AUGMENT</span>
-            <span className="font-mono text-rose-400 font-bold mx-0.5">:▶</span>
-            <span className="font-black text-lg text-slate-200">RIA</span>
-          </div>
+        {/* Geometric Vortex Ribbon Logo */}
+        <Link href="/" className="group">
+          <AugmentoriaLogo size={34} textClassName="text-lg font-black tracking-tight text-white group-hover:text-rose-400 transition" />
         </Link>
 
         {/* Center Nav Links */}
@@ -539,7 +533,7 @@ export default function LandingPage() {
       <footer className="border-t border-[#182033] bg-[#040609] px-4 sm:px-8 py-8 mt-auto text-slate-500 text-xs">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-black text-white">AUGMENT:▶RIA</span>
+            <AugmentoriaLogo size={22} textClassName="font-black text-white text-xs" />
             <span>© 2026 Augmentoria Inc. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-4">
@@ -568,7 +562,7 @@ export default function LandingPage() {
             {/* Modal Header */}
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-black text-white text-base">AUGMENT:▶RIA</span>
+                <AugmentoriaLogo size={26} textClassName="font-black text-white text-sm" />
                 <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 text-[10px] font-bold">SaaS Portal</span>
               </div>
               <h3 className="text-lg font-black text-white">Sign In to Studio Workspace</h3>

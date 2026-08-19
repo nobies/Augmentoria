@@ -106,11 +106,11 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
 
             {/* Tenant Dropdown */}
             {isCompanyDropdownOpen && (
-              <div className="absolute left-0 top-12 w-64 bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
+              <div className="absolute left-0 top-12 w-72 bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
                 <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">
-                  Switch Workspace
+                  Switch Studio Tenant ({allCompanies.length})
                 </div>
-                <div className="space-y-1 my-1">
+                <div className="space-y-1 my-1 max-h-80 overflow-y-auto scrollbar-thin">
                   {allCompanies.map(c => {
                     const isSelected = c.id === currentCompany?.id;
                     return (
@@ -128,16 +128,16 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
                         <div className="flex items-center gap-2">
                           <div
                             style={{ backgroundColor: c.brandPrimary }}
-                            className="w-5 h-5 rounded-md flex items-center justify-center font-black text-[10px] text-white"
+                            className="w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] text-white shrink-0"
                           >
                             {c.name.charAt(0)}
                           </div>
-                          <div>
-                            <span className="text-xs font-bold block leading-none">{c.name}</span>
-                            <span className="text-[9px] text-slate-400 capitalize">{c.plan}</span>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold block leading-none truncate max-w-[170px]">{c.name}</span>
+                            <span className="text-[9px] text-slate-400 capitalize">{c.plan} Plan</span>
                           </div>
                         </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
                       </button>
                     );
                   })}
@@ -208,12 +208,12 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
 
             {/* Profile Dropdown */}
             {isUserDropdownOpen && (
-              <div className="absolute right-0 top-12 w-64 bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 top-12 w-72 bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
                 <div className="flex items-center justify-between px-2 py-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Demo Role Switcher</span>
                   <UserCheck className="w-3 h-3 text-blue-400" />
                 </div>
-                <div className="space-y-1 my-1">
+                <div className="space-y-1 my-1 max-h-80 overflow-y-auto scrollbar-thin">
                   {companyUsers.map(u => {
                     const isSelected = u.id === currentUser?.id;
                     return (
@@ -228,9 +228,9 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
                           isSelected ? 'bg-blue-600/20 border border-blue-500/50 text-white' : 'hover:bg-[#182133] text-slate-300'
                         }`}
                       >
-                        <div>
-                          <span className="text-xs font-bold block leading-none">{u.name}</span>
-                          <span className="text-[9px] text-slate-400">{u.title || u.role}</span>
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold block leading-none truncate max-w-[150px]">{u.name}</span>
+                          <span className="text-[9px] text-slate-400 truncate max-w-[150px] block">{u.title || u.role}</span>
                         </div>
                         {getRoleBadge(u.role)}
                       </button>

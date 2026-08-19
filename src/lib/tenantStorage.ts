@@ -53,11 +53,13 @@ interface TenantDB extends DBSchema {
 }
 
 const DB_NAME = 'postflow_saas_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for 10-company multi-tenant seed
 
 let dbPromise: Promise<IDBPDatabase<TenantDB>> | null = null;
 
-// Initial Seed Data for Multi-Tenancy Demo
+// ----------------------------------------------------
+// 10 DIVERSE STUDIOS / TENANTS
+// ----------------------------------------------------
 const SEED_COMPANIES: Company[] = [
   {
     id: 'comp_vortex',
@@ -79,9 +81,93 @@ const SEED_COMPANIES: Company[] = [
     plan: 'enterprise',
     createdAt: new Date(Date.now() - 45 * 86400000).toISOString(),
   },
+  {
+    id: 'comp_neon',
+    name: 'Neon Horizon VFX',
+    slug: 'neon-horizon',
+    tagline: 'Feature Film CGI, Creatures & Dynamic FX',
+    brandPrimary: '#ec4899',
+    brandSecondary: '#f43f5e',
+    plan: 'enterprise',
+    createdAt: new Date(Date.now() - 60 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_pulse',
+    name: 'Pulse Creative Agency',
+    slug: 'pulse-creative',
+    tagline: 'Social-First Video Ads & Viral Campaigns',
+    brandPrimary: '#f59e0b',
+    brandSecondary: '#fbbf24',
+    plan: 'starter',
+    createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_mirage',
+    name: 'Mirage Animation Studio',
+    slug: 'mirage-animation',
+    tagline: '3D Character Animation & Motion Graphics',
+    brandPrimary: '#10b981',
+    brandSecondary: '#059669',
+    plan: 'pro',
+    createdAt: new Date(Date.now() - 40 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_soundwave',
+    name: 'SoundWave Post Audio',
+    slug: 'soundwave',
+    tagline: 'Dolby Atmos Mastering & Cinematic Sound Design',
+    brandPrimary: '#06b6d4',
+    brandSecondary: '#0891b2',
+    plan: 'pro',
+    createdAt: new Date(Date.now() - 35 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_blackbox',
+    name: 'BlackBox Documentaries',
+    slug: 'blackbox-docs',
+    tagline: 'Investigative Journalism & Festival Films',
+    brandPrimary: '#64748b',
+    brandSecondary: '#475569',
+    plan: 'starter',
+    createdAt: new Date(Date.now() - 50 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_apex',
+    name: 'Apex Esports Broadcast',
+    slug: 'apex-esports',
+    tagline: 'Live Gaming Production & Tournament Highlights',
+    brandPrimary: '#ef4444',
+    brandSecondary: '#dc2626',
+    plan: 'enterprise',
+    createdAt: new Date(Date.now() - 25 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_silk',
+    name: 'Silk & Stone Luxury Media',
+    slug: 'silk-stone',
+    tagline: 'Fashion, Haute Horlogerie & Architectural Cinema',
+    brandPrimary: '#d946ef',
+    brandSecondary: '#c026d3',
+    plan: 'pro',
+    createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
+  },
+  {
+    id: 'comp_skyline',
+    name: 'Skyline Aerial Cinema',
+    slug: 'skyline-aerial',
+    tagline: 'Heavy-Lift FPV Drone & Nature Cinematography',
+    brandPrimary: '#14b8a6',
+    brandSecondary: '#0d9488',
+    plan: 'starter',
+    createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
+  },
 ];
 
+// ----------------------------------------------------
+// 22+ DIVERSE USERS WITH DIFFERENT ROLES & PERMISSIONS
+// ----------------------------------------------------
 const SEED_USERS: User[] = [
+  // --- Vortex Post Studios ---
   {
     id: 'user_sarah',
     companyId: 'comp_vortex',
@@ -108,8 +194,18 @@ const SEED_USERS: User[] = [
     name: 'Leo Vance',
     email: 'leo@vortexpost.com',
     role: 'creative',
-    title: 'Senior Colorist & Editor',
+    title: 'Lead Colorist & Senior Editor',
     avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_maya',
+    companyId: 'comp_vortex',
+    name: 'Maya Lin',
+    email: 'maya@vortexpost.com',
+    role: 'creative',
+    title: 'VFX Compositor',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     createdAt: new Date().toISOString(),
   },
   {
@@ -118,23 +214,193 @@ const SEED_USERS: User[] = [
     name: 'Ahmed Rashed (Client)',
     email: 'ahmed@redbullmedia.com',
     role: 'client_reviewer',
-    title: 'Brand Marketing Lead',
+    title: 'Brand Marketing Director @ Red Bull',
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     createdAt: new Date().toISOString(),
   },
-  // CineFlow User
+
+  // --- CineFlow Media House ---
   {
     id: 'user_alex',
     companyId: 'comp_cineflow',
     name: 'Alex Mercer',
     email: 'alex@cineflowmedia.com',
     role: 'company_admin',
-    title: 'Studio Head',
+    title: 'Head of Production',
+    avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_elena',
+    companyId: 'comp_cineflow',
+    name: 'Elena Rostova',
+    email: 'elena@cineflowmedia.com',
+    role: 'creative',
+    title: 'Documentary Supervising Editor',
+    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_tariq',
+    companyId: 'comp_cineflow',
+    name: 'Tariq Mansour',
+    email: 'tariq@cineflowmedia.com',
+    role: 'account_manager',
+    title: 'Broadcast Delivery Producer',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- Neon Horizon VFX ---
+  {
+    id: 'user_marcus',
+    companyId: 'comp_neon',
+    name: 'Marcus Sterling',
+    email: 'marcus@neonvfx.com',
+    role: 'company_admin',
+    title: 'VFX Supervisor & CTO',
+    avatarUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_chloe',
+    companyId: 'comp_neon',
+    name: 'Chloe Dubois',
+    email: 'chloe@neonvfx.com',
+    role: 'creative',
+    title: 'CG Lead & Houdini Artist',
+    avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- Pulse Creative Agency ---
+  {
+    id: 'user_jake',
+    companyId: 'comp_pulse',
+    name: 'Jake Taylor',
+    email: 'jake@pulseagency.com',
+    role: 'company_admin',
+    title: 'Creative Director',
+    avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_samira',
+    companyId: 'comp_pulse',
+    name: 'Samira Khan',
+    email: 'samira@pulseagency.com',
+    role: 'account_manager',
+    title: 'Growth Marketing Producer',
+    avatarUrl: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- Mirage Animation Studio ---
+  {
+    id: 'user_kenji',
+    companyId: 'comp_mirage',
+    name: 'Kenji Sato',
+    email: 'kenji@miragestudio.jp',
+    role: 'company_admin',
+    title: 'Animation Director',
+    avatarUrl: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_claire',
+    companyId: 'comp_mirage',
+    name: 'Claire Fontaine',
+    email: 'claire@miragestudio.jp',
+    role: 'creative',
+    title: 'Lead Motion Designer',
+    avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- SoundWave Post Audio ---
+  {
+    id: 'user_liam',
+    companyId: 'comp_soundwave',
+    name: 'Liam O’Connor',
+    email: 'liam@soundwavepost.com',
+    role: 'company_admin',
+    title: 'Supervising Sound Editor (MPSE)',
+    avatarUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_nina',
+    companyId: 'comp_soundwave',
+    name: 'Nina Patel',
+    email: 'nina@soundwavepost.com',
+    role: 'creative',
+    title: 'Re-recording Mixer',
+    avatarUrl: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- BlackBox Documentaries ---
+  {
+    id: 'user_henrik',
+    companyId: 'comp_blackbox',
+    name: 'Henrik Lindqvist',
+    email: 'henrik@blackboxdocs.no',
+    role: 'company_admin',
+    title: 'Documentary Filmmaker & Producer',
+    avatarUrl: 'https://images.unsplash.com/photo-1463453091185-61582044d556?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- Apex Esports Production ---
+  {
+    id: 'user_jin',
+    companyId: 'comp_apex',
+    name: 'Jin-Woo Park',
+    email: 'jin@apexesports.tv',
+    role: 'company_admin',
+    title: 'Broadcast Technical Director',
+    avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user_victoria',
+    companyId: 'comp_apex',
+    name: 'Victoria Vance',
+    email: 'victoria@apexesports.tv',
+    role: 'account_manager',
+    title: 'Tournament Operations Lead',
+    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- Silk & Stone Luxury Media ---
+  {
+    id: 'user_giovanni',
+    companyId: 'comp_silk',
+    name: 'Giovanni Rossi',
+    email: 'giovanni@silkcimena.it',
+    role: 'company_admin',
+    title: 'Fashion Film Director',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString(),
+  },
+
+  // --- Skyline Aerial Cinema ---
+  {
+    id: 'user_erik',
+    companyId: 'comp_skyline',
+    name: 'Erik Olsen',
+    email: 'erik@skylineaerial.ca',
+    role: 'company_admin',
+    title: 'Chief Drone Pilot & DP',
     avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
     createdAt: new Date().toISOString(),
   },
 ];
 
+// ----------------------------------------------------
+// CLIENTS ACROSS STUDIOS
+// ----------------------------------------------------
 const SEED_CLIENTS: Client[] = [
   {
     id: 'client_redbull',
@@ -143,7 +409,7 @@ const SEED_CLIENTS: Client[] = [
     companyName: 'Red Bull GmbH',
     email: 'production@redbullmedia.com',
     phone: '+43 662 6582 0',
-    notes: 'Primary contact: Ahmed Rashed. Strict 4K Rec.709 color requirements.',
+    notes: 'Primary contact: Ahmed Rashed. High-energy color saturation and rapid frame rate standards.',
     createdAt: new Date(Date.now() - 25 * 86400000).toISOString(),
   },
   {
@@ -153,7 +419,7 @@ const SEED_CLIENTS: Client[] = [
     companyName: 'Nike Inc.',
     email: 'campaigns@nike.com',
     phone: '+1 503 671 6453',
-    notes: 'Seasonal campaign delivery. Needs vertical 9:16 cuts and 16:9 hero exports.',
+    notes: 'Requires 16:9 widescreen master + 9:16 vertical reframe exports for social rollout.',
     createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
   },
   {
@@ -163,12 +429,56 @@ const SEED_CLIENTS: Client[] = [
     companyName: 'Spotify AB',
     email: 'video@spotify.com',
     phone: '+46 8 501 645 00',
-    notes: 'Exclusive artist sessions and teaser packages.',
+    notes: 'Exclusive artist sessions and global Wrapped campaign deliverables.',
     createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
+  },
+  {
+    id: 'client_warner',
+    companyId: 'comp_neon',
+    name: 'Warner Bros. Pictures',
+    companyName: 'Warner Bros. Discovery',
+    email: 'vfxreview@warnerbros.com',
+    phone: '+1 818 954 6000',
+    notes: 'Strict NDA watermarking required on all screener cuts.',
+    createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
+  },
+  {
+    id: 'client_audi',
+    companyId: 'comp_pulse',
+    name: 'Audi AG Digital',
+    companyName: 'Audi AG',
+    email: 'social@audi.de',
+    phone: '+49 841 89 0',
+    notes: 'Electric vehicle launch series with dynamic sound accents.',
+    createdAt: new Date(Date.now() - 18 * 86400000).toISOString(),
+  },
+  {
+    id: 'client_riot',
+    companyId: 'comp_apex',
+    name: 'Riot Games Esports',
+    companyName: 'Riot Games Inc.',
+    email: 'esports-broadcast@riotgames.com',
+    phone: '+1 424 231 1111',
+    notes: 'World Championship highlight packages. 60fps deliverables.',
+    createdAt: new Date(Date.now() - 22 * 86400000).toISOString(),
+  },
+  {
+    id: 'client_gucci',
+    companyId: 'comp_silk',
+    name: 'Gucci Creative Hub',
+    companyName: 'Kering Group',
+    email: 'fashion-media@gucci.com',
+    phone: '+39 055 759221',
+    notes: 'Milan Fashion Week digital campaign.',
+    createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
   },
 ];
 
+// ----------------------------------------------------
+// PROJECTS ACROSS STUDIOS
+// ----------------------------------------------------
 const SEED_PROJECTS: Project[] = [
+  // Vortex Projects
   {
     id: 'proj_cliff_diving',
     companyId: 'comp_vortex',
@@ -195,10 +505,12 @@ const SEED_PROJECTS: Project[] = [
     startTimecode: '01:00:00:00',
     status: 'internal_review',
     primaryColor: '#3b82f6',
-    assignedUserIds: ['user_david', 'user_leo'],
+    assignedUserIds: ['user_david', 'user_leo', 'user_maya'],
     createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
     updatedAt: new Date().toISOString(),
   },
+
+  // CineFlow Projects
   {
     id: 'proj_spotify_teaser',
     companyId: 'comp_cineflow',
@@ -210,8 +522,90 @@ const SEED_PROJECTS: Project[] = [
     startTimecode: '01:00:00:00',
     status: 'approved',
     primaryColor: '#10b981',
-    assignedUserIds: ['user_alex'],
+    assignedUserIds: ['user_alex', 'user_elena'],
     createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'proj_nordic_doc',
+    companyId: 'comp_cineflow',
+    name: 'Arctic Silence — 4K Nature Doc',
+    description: 'Feature-length documentary exploring seasonal wildlife migrations.',
+    fps: 24,
+    dropFrame: false,
+    startTimecode: '01:00:00:00',
+    status: 'client_review',
+    primaryColor: '#8b5cf6',
+    assignedUserIds: ['user_alex', 'user_tariq'],
+    createdAt: new Date(Date.now() - 18 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+
+  // Neon Horizon Projects
+  {
+    id: 'proj_cyber_vfx',
+    companyId: 'comp_neon',
+    clientId: 'client_warner',
+    name: 'Cyberpunk 2099 — VFX Shot Breakdown',
+    description: 'Futuristic city hologram composites, explosion passes, and wire removal.',
+    fps: 24,
+    dropFrame: false,
+    startTimecode: '01:00:00:00',
+    status: 'client_review',
+    primaryColor: '#ec4899',
+    assignedUserIds: ['user_marcus', 'user_chloe'],
+    createdAt: new Date(Date.now() - 14 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+
+  // Pulse Creative Projects
+  {
+    id: 'proj_audi_ev',
+    companyId: 'comp_pulse',
+    clientId: 'client_audi',
+    name: 'Audi e-tron GT — Silent Power Social Ad',
+    description: 'Fast-paced 15s Instagram reels and TikTok campaign series.',
+    fps: 30,
+    dropFrame: false,
+    startTimecode: '01:00:00:00',
+    status: 'changes_requested',
+    primaryColor: '#f59e0b',
+    assignedUserIds: ['user_jake', 'user_samira'],
+    createdAt: new Date(Date.now() - 4 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+
+  // Apex Esports Projects
+  {
+    id: 'proj_worlds_highlights',
+    companyId: 'comp_apex',
+    clientId: 'client_riot',
+    name: 'LoL Worlds 2026 — Finals Highlight Reel',
+    description: '60fps high bitrate tournament replay package with motion graphics scoreboard overlays.',
+    fps: 60,
+    dropFrame: false,
+    startTimecode: '01:00:00:00',
+    status: 'delivered',
+    primaryColor: '#ef4444',
+    assignedUserIds: ['user_jin', 'user_victoria'],
+    createdAt: new Date(Date.now() - 8 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+
+  // Silk & Stone Projects
+  {
+    id: 'proj_gucci_milan',
+    companyId: 'comp_silk',
+    clientId: 'client_gucci',
+    name: 'Gucci Fall Collection — Milan Runway Cinema',
+    description: 'Ultra 4K slow-motion film looks with vintage anamorphic lens characteristics.',
+    fps: 24,
+    dropFrame: false,
+    startTimecode: '01:00:00:00',
+    status: 'approved',
+    primaryColor: '#d946ef',
+    assignedUserIds: ['user_giovanni'],
+    createdAt: new Date(Date.now() - 7 * 86400000).toISOString(),
     updatedAt: new Date().toISOString(),
   },
 ];
@@ -249,6 +643,17 @@ const SEED_LOGS: ActivityLog[] = [
     action: 'Project Initialized',
     details: 'Created project and assigned creative leads',
     createdAt: new Date(Date.now() - 24 * 3600000).toISOString(),
+  },
+  {
+    id: 'log_4',
+    companyId: 'comp_neon',
+    projectId: 'proj_cyber_vfx',
+    userId: 'user_marcus',
+    userName: 'Marcus Sterling',
+    userRole: 'company_admin',
+    action: 'VFX Pass Approved',
+    details: 'Approved final comp for shot 042',
+    createdAt: new Date(Date.now() - 6 * 3600000).toISOString(),
   },
 ];
 
@@ -300,14 +705,14 @@ export function getTenantDB() {
 }
 
 // ----------------------------------------------------
-// SEED INITIALIZER
+// SEED INITIALIZER (Auto-seeds all 10 companies & 22 users)
 // ----------------------------------------------------
 export async function initTenantSeed(): Promise<void> {
   const db = await getTenantDB();
   if (!db) return;
 
   const existingCompanies = await db.getAll('companies');
-  if (existingCompanies.length === 0) {
+  if (existingCompanies.length < 10) {
     for (const c of SEED_COMPANIES) await db.put('companies', c);
     for (const u of SEED_USERS) await db.put('users', u);
     for (const cl of SEED_CLIENTS) await db.put('clients', cl);
@@ -324,7 +729,7 @@ export async function getAllCompanies(): Promise<Company[]> {
   if (!db) return SEED_COMPANIES;
   await initTenantSeed();
   const all = await db.getAll('companies');
-  return all.length > 0 ? all : SEED_COMPANIES;
+  return all.length >= 10 ? all : SEED_COMPANIES;
 }
 
 export async function getCompanyById(id: string): Promise<Company | null> {

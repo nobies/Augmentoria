@@ -47,8 +47,10 @@ export default function LoginPage() {
   };
 
   const handleMemberOneClickLogin = async (userId: string, companyId: string) => {
-    await switchCompany(companyId);
     await switchUser(userId);
+    if (companyId) {
+      await switchCompany(companyId);
+    }
     router.push('/dashboard');
   };
 

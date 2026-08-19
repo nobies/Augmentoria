@@ -44,8 +44,10 @@ export default function LandingPage() {
   const activeStudioObj = SEED_COMPANIES.find(c => c.id === activeStudioTab) || SEED_COMPANIES[0];
 
   const handleQuickLogin = async (userId: string, companyId: string) => {
-    await switchCompany(companyId);
     await switchUser(userId);
+    if (companyId) {
+      await switchCompany(companyId);
+    }
     setIsLoginModalOpen(false);
     router.push('/dashboard');
   };
@@ -53,8 +55,8 @@ export default function LandingPage() {
   const handleLoginFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const matchedUser = SEED_USERS.find(u => u.companyId === selectedStudioId) || SEED_USERS[0];
-    await switchCompany(selectedStudioId);
     await switchUser(matchedUser.id);
+    await switchCompany(selectedStudioId);
     setIsLoginModalOpen(false);
     router.push('/dashboard');
   };

@@ -85,6 +85,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const comps = await getAllCompanies();
     setAllCompanies(comps);
 
+    const allUsers = await getAllUsers();
+
     // Check localStorage for persisted session
     let savedCompanyId = targetCompanyId;
     let savedUserId = targetUserId;
@@ -93,19 +95,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!savedUserId) savedUserId = localStorage.getItem('augmentoria_auth_user') || undefined;
     }
 
-    const activeComp = savedCompanyId
-      ? comps.find(c => c.id === savedCompanyId) || comps[0]
-      : comps[0];
+    // Resolve Active User accurately
+    let activeUser: User | null = null;
+    if (savedUserId) {
+      activeUser = allUsers.find(u => u.id === savedUserId) || null;
+    }
+    if (!activeUser) {
+      activeUser = allUsers.find(u => u.role === 'super_admin') || allUsers[0] || SEED_USERS[0];
+    }
+    setCurrentUser(activeUser);
+
+    // Resolve Company based on user role
+    let activeCompId = savedCompanyId;
+    if (activeUser.role !== 'super_admin') {
+      // Non-super-admins are strictly locked to their own company
+      activeCompId = activeUser.companyId;
+    } else {
+      // Super admin can be in any selected company (default to saved or first company)
+      if (!activeCompId) {
+        activeCompId = comps[0]?.id || 'comp_vortex';
+      }
+    }
+
+    const activeComp = comps.find(c => c.id === activeCompId) || comps[0];
     setCurrentCompany(activeComp || null);
 
     if (activeComp) {
       const users = await getUsersByCompany(activeComp.id);
       setCompanyUsers(users);
-
-      const activeUser = savedUserId
-        ? users.find(u => u.id === savedUserId) || users[0]
-        : users[0];
-      setCurrentUser(activeUser || null);
 
       const clients = await getClientsByCompany(activeComp.id);
       setCompanyClients(clients);

@@ -726,7 +726,15 @@ export async function initTenantSeed(): Promise<void> {
   const existingCompanies = await db.getAll('companies');
   if (existingCompanies.length < 10) {
     for (const c of SEED_COMPANIES) await db.put('companies', c);
-    for (const u of SEED_USERS) await db.put('users', u);
+  }
+  for (const u of SEED_USERS) {
+    const existing = await db.get('users', u.id);
+    if (!existing) {
+      await db.put('users', u);
+    }
+  }
+  const existingClients = await db.getAll('clients');
+  if (existingClients.length < 10) {
     for (const cl of SEED_CLIENTS) await db.put('clients', cl);
     for (const p of SEED_PROJECTS) await db.put('projects', p);
     for (const l of SEED_LOGS) await db.put('activityLogs', l);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   CheckCircle2,
@@ -11,7 +11,6 @@ import {
   Filter,
   Check,
   Edit2,
-  ExternalLink,
   PenTool,
   Film,
   Palette,
@@ -49,6 +48,11 @@ export const NotesList: React.FC<NotesListProps> = ({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isEditingAuthor, setIsEditingAuthor] = useState(false);
   const [authorInput, setAuthorInput] = useState(currentAuthorName);
+
+  // Sync authorInput if prop changes
+  useEffect(() => {
+    setAuthorInput(currentAuthorName);
+  }, [currentAuthorName]);
 
   const filteredNotes = notes.filter(n => {
     const matchesCat = filterCat === 'all' || n.category === filterCat;
@@ -93,10 +97,10 @@ export const NotesList: React.FC<NotesListProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0d121c] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl flex-1 min-h-0">
+    <div className="flex flex-col h-full bg-[#0d121c] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl flex-1 min-h-[300px] lg:min-h-0">
       {/* Top Header: Search & Category Filter */}
       <div className="p-2.5 border-b border-[#1e273b] bg-[#111724] space-y-2 shrink-0">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-1 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-bold text-white uppercase tracking-wider">Review Notes</span>
             <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-mono font-bold">
@@ -104,14 +108,14 @@ export const NotesList: React.FC<NotesListProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-0.5">
             {['all', 'editorial', 'vfx', 'color', 'sound'].map(cat => (
               <button
                 key={cat}
                 onClick={() => setFilterCat(cat)}
-                className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition ${
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition shrink-0 ${
                   filterCat === cat
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-blue-600 text-white shadow'
                     : 'bg-[#182133] text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -123,7 +127,7 @@ export const NotesList: React.FC<NotesListProps> = ({
 
         {/* Current Reviewer Name Badge & Search input */}
         <div className="flex items-center gap-1.5">
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
@@ -136,15 +140,15 @@ export const NotesList: React.FC<NotesListProps> = ({
 
           {/* Reviewer Name Pill */}
           {isEditingAuthor ? (
-            <form onSubmit={handleSaveAuthor} className="flex items-center gap-1">
+            <form onSubmit={handleSaveAuthor} className="flex items-center gap-1 shrink-0">
               <input
                 type="text"
                 value={authorInput}
                 onChange={e => setAuthorInput(e.target.value)}
-                className="w-24 px-1.5 py-1 rounded bg-[#090d14] border border-blue-500 text-[10px] text-white focus:outline-none"
+                className="w-20 sm:w-24 px-1.5 py-1 rounded bg-[#090d14] border border-blue-500 text-[10px] text-white focus:outline-none"
                 autoFocus
               />
-              <button type="submit" className="p-1 rounded bg-blue-600 text-white">
+              <button type="submit" className="p-1 rounded bg-blue-600 text-white" aria-label="Save Author Name">
                 <Check className="w-3 h-3" />
               </button>
             </form>
@@ -157,8 +161,9 @@ export const NotesList: React.FC<NotesListProps> = ({
               }}
               className="flex items-center gap-1 px-2 py-1 rounded-xl bg-[#151c2a] hover:bg-[#1f2a3d] border border-[#232d44] text-[10px] font-bold text-slate-300 transition shrink-0"
               title="Change your reviewer name for comments"
+              aria-label="Change Reviewer Name"
             >
-              <User className="w-3 h-3 text-blue-400" />
+              <User className="w-3 h-3 text-blue-400 shrink-0" />
               <span className="max-w-[70px] truncate">{currentAuthorName}</span>
             </button>
           )}
@@ -168,7 +173,7 @@ export const NotesList: React.FC<NotesListProps> = ({
       {/* Notes List with Scroll */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#1e273b] scrollbar-track-transparent">
         {filteredNotes.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500 space-y-2">
+          <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-center p-4 text-slate-500 space-y-2">
             <Filter className="w-8 h-8 opacity-30 text-blue-400" />
             <p className="text-xs font-medium">No notes match current filter</p>
           </div>
@@ -207,7 +212,7 @@ export const NotesList: React.FC<NotesListProps> = ({
                         setPreviewImage(n.stillImageUrl);
                       }
                     }}
-                    className="relative w-16 h-11 rounded-lg bg-[#0b0e16] border border-[#232d44] overflow-hidden shrink-0 group/thumb cursor-zoom-in flex items-center justify-center"
+                    className="relative w-14 sm:w-16 h-10 sm:h-11 rounded-lg bg-[#0b0e16] border border-[#232d44] overflow-hidden shrink-0 group/thumb cursor-zoom-in flex items-center justify-center"
                   >
                     {n.stillImageUrl ? (
                       <img src={n.stillImageUrl} alt="Frame" className="w-full h-full object-cover" />
@@ -234,7 +239,7 @@ export const NotesList: React.FC<NotesListProps> = ({
                         <span className="font-mono text-[10px] font-bold text-blue-400 px-1.5 py-0.2 rounded bg-[#0b0e16]">
                           {n.timecode}
                         </span>
-                        <span className="text-[11px] font-bold text-white truncate max-w-[90px]">
+                        <span className="text-[11px] font-bold text-white truncate max-w-[80px] sm:max-w-[100px]">
                           {n.presetLabel}
                         </span>
                         <span className={`text-[8px] font-bold px-1 py-0.2 rounded uppercase border ${catBadgeClass}`}>
@@ -248,7 +253,9 @@ export const NotesList: React.FC<NotesListProps> = ({
                             e.stopPropagation();
                             onToggleResolved(n.id);
                           }}
-                          className="p-0.5 rounded text-slate-400 hover:text-emerald-400"
+                          className="p-1 rounded text-slate-400 hover:text-emerald-400"
+                          title={n.isResolved ? 'Mark as Unresolved' : 'Mark as Resolved'}
+                          aria-label="Toggle Resolved"
                         >
                           {n.isResolved ? (
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -261,7 +268,9 @@ export const NotesList: React.FC<NotesListProps> = ({
                             e.stopPropagation();
                             onDeleteNote(n.id);
                           }}
-                          className="p-0.5 rounded text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100"
+                          className="p-1 rounded text-slate-500 hover:text-red-400 opacity-80 sm:opacity-0 group-hover:opacity-100 transition"
+                          title="Delete Note"
+                          aria-label="Delete Note"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -281,6 +290,7 @@ export const NotesList: React.FC<NotesListProps> = ({
                         <button
                           onClick={() => handleSaveEdit(n.id)}
                           className="p-1 rounded bg-blue-600 text-white"
+                          aria-label="Save comment"
                         >
                           <Check className="w-2.5 h-2.5" />
                         </button>
@@ -288,7 +298,7 @@ export const NotesList: React.FC<NotesListProps> = ({
                     ) : (
                       <div className="flex items-start justify-between gap-1">
                         <p
-                          className={`text-[11px] leading-tight ${
+                          className={`text-[11px] leading-tight break-words ${
                             n.text ? 'text-slate-300' : 'text-slate-500 italic'
                           } ${n.isResolved ? 'line-through text-slate-500' : ''}`}
                         >
@@ -299,7 +309,9 @@ export const NotesList: React.FC<NotesListProps> = ({
                             e.stopPropagation();
                             handleStartEdit(n);
                           }}
-                          className="text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100"
+                          className="text-slate-500 hover:text-slate-300 opacity-80 sm:opacity-0 group-hover:opacity-100 transition shrink-0 p-0.5"
+                          title="Edit Comment"
+                          aria-label="Edit Comment"
                         >
                           <Edit2 className="w-2.5 h-2.5" />
                         </button>
@@ -325,6 +337,7 @@ export const NotesList: React.FC<NotesListProps> = ({
                         <button
                           onClick={() => togglePlayAudio(n.id, n.audioBlobUrl)}
                           className="w-4 h-4 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center shadow"
+                          aria-label={playingAudioId === n.id ? 'Pause voice note' : 'Play voice note'}
                         >
                           {playingAudioId === n.id ? <Pause className="w-2 h-2" /> : <Play className="w-2 h-2 ml-0.5" />}
                         </button>
@@ -335,12 +348,12 @@ export const NotesList: React.FC<NotesListProps> = ({
 
                     {/* Author & Timestamp Footer */}
                     <div className="flex items-center justify-between text-[9px] text-slate-500 pt-1 mt-0.5 border-t border-[#1a2336]/60">
-                      <span className="flex items-center gap-1 font-semibold text-slate-400">
-                        <User className="w-2.5 h-2.5 text-blue-400" />
-                        <span>{n.authorName || 'Reviewer'}</span>
+                      <span className="flex items-center gap-1 font-semibold text-slate-400 truncate max-w-[120px]">
+                        <User className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+                        <span className="truncate">{n.authorName || 'Reviewer'}</span>
                       </span>
                       {n.createdAt && (
-                        <span className="text-[8px] font-mono text-slate-500">
+                        <span className="text-[8px] font-mono text-slate-500 shrink-0">
                           {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}

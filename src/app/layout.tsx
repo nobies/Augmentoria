@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata: Metadata = {
-  title: 'Media Dashboard | Pro Post-Production Hub',
-  description: 'Modular post-production tools for film, video, and audio teams.',
+  title: 'PostFlow Studio | Media & Review Platform',
+  description: 'Broadcast-grade multi-tenant post-production and media review platform.',
 };
 
 export default function RootLayout({
@@ -14,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-[#090b10] text-[#f1f5f9] min-h-screen antialiased selection:bg-blue-600 selection:text-white">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

@@ -133,8 +133,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-4 sm:p-6 relative animate-in fade-in zoom-in-95 scrollbar-thin">
         {/* Close Button */}
         <button
           onClick={onClose}

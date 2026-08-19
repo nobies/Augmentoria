@@ -334,7 +334,7 @@ export default function ProjectDetailPage() {
               )}
 
               <Link
-                href={`/?projectId=${project.id}`}
+                href={`/screener?projectId=${project.id}`}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-900/40 active:scale-95 transition"
               >
                 <Tv className="w-4 h-4" />
@@ -434,7 +434,7 @@ export default function ProjectDetailPage() {
                       </span>
 
                       <Link
-                        href={`/?projectId=${project.id}&cutId=${ver.id}`}
+                        href={`/screener?projectId=${project.id}&cutId=${ver.id}`}
                         className="px-3 py-1.5 rounded-xl bg-[#182133] hover:bg-blue-600 hover:text-white text-blue-400 text-xs font-bold flex items-center gap-1 transition"
                       >
                         <Play className="w-3 h-3 fill-current" />

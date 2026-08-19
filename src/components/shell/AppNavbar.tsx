@@ -45,7 +45,7 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
     { href: '/projects', label: 'Projects', icon: FolderKanban },
     { href: '/clients', label: 'Clients', icon: Building2 },
     { href: '/team', label: 'Team', icon: Users },
-    { href: '/', label: 'Screener Studio', icon: Tv, highlight: true },
+    { href: '/screener', label: 'Screener Studio', icon: Tv, highlight: true },
   ];
 
   const handleCreateCompanySubmit = async (e: React.FormEvent) => {

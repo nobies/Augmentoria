@@ -97,6 +97,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Compare Dual Refs
     const vimeoCompareContainerARef = useRef<HTMLDivElement | null>(null);
     const vimeoCompareContainerBRef = useRef<HTMLDivElement | null>(null);
+    const youtubeCompareContainerARef = useRef<HTMLDivElement | null>(null);
+    const youtubeCompareContainerBRef = useRef<HTMLDivElement | null>(null);
     const vimeoPlayerARef = useRef<any>(null);
     const vimeoPlayerBRef = useRef<any>(null);
     const youtubeCompareARef = useRef<any>(null);
@@ -221,77 +223,33 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Capture Thumbnail (Safe with CORS / Tainted Canvas handling)
     const captureThumbnail = (): string => {
       try {
-        // For YouTube and Vimeo: generate a branded frame thumbnail with timecode
-        // (Cross-origin iframes prevent direct canvas capture)
-        if ((isCutYouTube || isCutVimeo) && !videoRef.current?.videoWidth) {
-          const canvas = document.createElement('canvas');
-          canvas.width = 640;
-          canvas.height = 360;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return '';
-          // Dark frame background
-          ctx.fillStyle = '#0b0f19';
-          ctx.fillRect(0, 0, 640, 360);
-          // Gradient bar at bottom
-          const grad = ctx.createLinearGradient(0, 300, 0, 360);
-          grad.addColorStop(0, 'rgba(0,0,0,0)');
-          grad.addColorStop(1, 'rgba(0,0,0,0.9)');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 300, 640, 60);
-          // Timecode text
-          const tc = secondsToDisplayTimecode(
-            currentTime,
-            project.fps,
-            project.startTimecode || '01:00:00:00',
-            project.dropFrame
-          );
-          ctx.fillStyle = '#3b82f6';
-          ctx.font = 'bold 28px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(tc, 320, 195);
-          // Cut name
-          ctx.fillStyle = '#94a3b8';
-          ctx.font = '14px sans-serif';
-          ctx.fillText(cut.name || 'Video', 320, 230);
-          // Provider badge
-          ctx.fillStyle = isCutYouTube ? '#FF0000' : '#1AB7EA';
-          ctx.font = 'bold 11px sans-serif';
-          ctx.textAlign = 'left';
-          ctx.fillText(isCutYouTube ? '▶ YouTube' : '▶ Vimeo', 16, 345);
-          return canvas.toDataURL('image/jpeg', 0.88);
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 360;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return '';
-
+        // 1. Direct HTML5 Video Frame Capture (Exact paused frame screenshot)
         if (videoRef.current && videoRef.current.videoWidth > 0) {
           try {
-            ctx.drawImage(videoRef.current, 0, 0, 640, 360);
-            return canvas.toDataURL('image/jpeg', 0.88);
-          } catch (taintErr) {
-            // Video is cross-origin and tainted canvas. Generate a clean dark slate fallback.
-            const cleanCanvas = document.createElement('canvas');
-            cleanCanvas.width = 640;
-            cleanCanvas.height = 360;
-            const cleanCtx = cleanCanvas.getContext('2d');
-            if (cleanCtx) {
-              cleanCtx.fillStyle = '#0b0f19';
-              cleanCtx.fillRect(0, 0, 640, 360);
-              cleanCtx.fillStyle = '#3b82f6';
-              cleanCtx.font = 'bold 20px monospace';
-              cleanCtx.fillText(cut.name || 'Video Cut', 30, 180);
-              return cleanCanvas.toDataURL('image/jpeg', 0.88);
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 360;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(videoRef.current, 0, 0, 640, 360);
+              return canvas.toDataURL('image/jpeg', 0.88);
             }
-            return '';
+          } catch (taintErr) {
+            // Tainted canvas fallback below
           }
-        } else {
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(0, 0, 640, 360);
-          return canvas.toDataURL('image/jpeg', 0.88);
         }
+
+        // 2. YouTube Official Frame Thumbnail
+        if (isCutYouTube && ytVideoIdA) {
+          return `https://img.youtube.com/vi/${ytVideoIdA}/hqdefault.jpg`;
+        }
+
+        // 3. Vimeo High-Res Poster
+        if (isCutVimeo && vimeoPosterDataUrl) {
+          return vimeoPosterDataUrl;
+        }
+
+        return '';
       } catch (err) {
         console.warn('captureThumbnail caught error:', err);
         return '';
@@ -674,12 +632,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }, [isCutVimeo, cut.videoUrl]);
 
     // ----------------------------------------------------
-    // COMPARE MODE INITIALIZATION
+    // COMPARE MODE INITIALIZATION (YouTube, Vimeo, HTML5)
     // ----------------------------------------------------
     useEffect(() => {
       if (cut.provider === 'compare') {
         let isMounted = true;
 
+        // 1. Initialize Cut A
         if (providerA === 'vimeo' && cut.videoUrl && vimeoCompareContainerARef.current) {
           const Vimeo = (window as any).Vimeo;
           if (Vimeo) {
@@ -705,8 +664,49 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               }
             });
           }
+        } else if (providerA === 'youtube' && ytVideoIdA && youtubeCompareContainerARef.current) {
+          const loadYT = () => {
+            return new Promise<void>(resolve => {
+              if ((window as any).YT && (window as any).YT.Player) {
+                resolve();
+                return;
+              }
+              const tag = document.createElement('script');
+              tag.src = 'https://www.youtube.com/iframe_api';
+              tag.async = true;
+              (window as any).onYouTubeIframeAPIReady = () => resolve();
+              document.body.appendChild(tag);
+            });
+          };
+
+          loadYT().then(() => {
+            if (!isMounted || !youtubeCompareContainerARef.current) return;
+            youtubeCompareContainerARef.current.innerHTML = '';
+            const divA = document.createElement('div');
+            youtubeCompareContainerARef.current.appendChild(divA);
+            const YT = (window as any).YT;
+            const pA = new YT.Player(divA, {
+              videoId: ytVideoIdA,
+              width: '100%',
+              height: '100%',
+              playerVars: { autoplay: 0, controls: 0, disablekb: 1, enablejsapi: 1, modestbranding: 1, rel: 0, playsinline: 1 },
+              events: {
+                onReady: () => {
+                  if (isMounted) {
+                    const d = pA.getDuration?.();
+                    if (d && d > 0) {
+                      setDuration(d);
+                      onDurationChange(d);
+                    }
+                  }
+                },
+              },
+            });
+            youtubeCompareARef.current = pA;
+          });
         }
 
+        // 2. Initialize Cut B
         if (providerB === 'vimeo' && cut.videoUrlB && vimeoCompareContainerBRef.current) {
           const Vimeo = (window as any).Vimeo;
           if (Vimeo) {
@@ -720,6 +720,40 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             });
             vimeoPlayerBRef.current = pB;
           }
+        } else if (providerB === 'youtube' && ytVideoIdB && youtubeCompareContainerBRef.current) {
+          const loadYT = () => {
+            return new Promise<void>(resolve => {
+              if ((window as any).YT && (window as any).YT.Player) {
+                resolve();
+                return;
+              }
+              const tag = document.createElement('script');
+              tag.src = 'https://www.youtube.com/iframe_api';
+              tag.async = true;
+              (window as any).onYouTubeIframeAPIReady = () => resolve();
+              document.body.appendChild(tag);
+            });
+          };
+
+          loadYT().then(() => {
+            if (!isMounted || !youtubeCompareContainerBRef.current) return;
+            youtubeCompareContainerBRef.current.innerHTML = '';
+            const divB = document.createElement('div');
+            youtubeCompareContainerBRef.current.appendChild(divB);
+            const YT = (window as any).YT;
+            const pB = new YT.Player(divB, {
+              videoId: ytVideoIdB,
+              width: '100%',
+              height: '100%',
+              playerVars: { autoplay: 0, controls: 0, disablekb: 1, enablejsapi: 1, modestbranding: 1, rel: 0, playsinline: 1 },
+              events: {
+                onReady: () => {
+                  try { pB.mute(); } catch (e) {}
+                },
+              },
+            });
+            youtubeCompareBRef.current = pB;
+          });
         }
 
         return () => {
@@ -727,10 +761,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           try {
             vimeoPlayerARef.current?.destroy().catch(() => {});
             vimeoPlayerBRef.current?.destroy().catch(() => {});
+            youtubeCompareARef.current?.destroy?.();
+            youtubeCompareBRef.current?.destroy?.();
           } catch (e) {}
         };
       }
-    }, [cut.provider, cut.videoUrl, cut.videoUrlB, providerA, providerB]);
+    }, [cut.provider, cut.videoUrl, cut.videoUrlB, providerA, providerB, ytVideoIdA, ytVideoIdB]);
 
     // Local HTML5 Video Events
     const handleHtml5TimeUpdate = () => {
@@ -944,12 +980,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               {/* SPLIT MODE */}
               {compareMode === 'split' && (
                 <div className="w-full h-full flex">
-                  <div className="w-1/2 h-full relative border-r border-slate-700 bg-black flex items-center justify-center">
+                  <div className="w-1/2 h-full relative border-r border-slate-700 bg-black flex items-center justify-center overflow-hidden">
                     <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-blue-600/80 text-[9px] font-bold text-white uppercase">
                       Clip A
                     </span>
                     {providerA === 'vimeo' ? (
                       <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : providerA === 'youtube' ? (
+                      <div ref={youtubeCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
                       <video
                         ref={html5VideoARef}
@@ -961,12 +999,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       />
                     )}
                   </div>
-                  <div className="w-1/2 h-full relative bg-black flex items-center justify-center">
+                  <div className="w-1/2 h-full relative bg-black flex items-center justify-center overflow-hidden">
                     <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-purple-600/80 text-[9px] font-bold text-white uppercase">
                       Clip B
                     </span>
                     {providerB === 'vimeo' ? (
                       <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : providerB === 'youtube' ? (
+                      <div ref={youtubeCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
                       <video
                         ref={html5VideoBRef}
@@ -982,10 +1022,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
               {/* WIPE MODE */}
               {compareMode === 'wipe' && (
-                <div className="w-full h-full relative">
+                <div className="w-full h-full relative overflow-hidden">
                   <div className="absolute inset-0 w-full h-full">
                     {providerB === 'vimeo' ? (
                       <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : providerB === 'youtube' ? (
+                      <div ref={youtubeCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
                       <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline muted className="w-full h-full object-contain" />
                     )}
@@ -996,6 +1038,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   >
                     {providerA === 'vimeo' ? (
                       <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : providerA === 'youtube' ? (
+                      <div ref={youtubeCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
                       <video
                         ref={html5VideoARef}
@@ -1020,10 +1064,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
               {/* FADE MODE */}
               {compareMode === 'fade' && (
-                <div className="w-full h-full relative">
+                <div className="w-full h-full relative overflow-hidden">
                   <div className="absolute inset-0 w-full h-full">
                     {providerA === 'vimeo' ? (
                       <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : providerA === 'youtube' ? (
+                      <div ref={youtubeCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
                       <video
                         ref={html5VideoARef}
@@ -1041,6 +1087,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   >
                     {providerB === 'vimeo' ? (
                       <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                    ) : providerB === 'youtube' ? (
+                      <div ref={youtubeCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                     ) : (
                       <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline muted className="w-full h-full object-contain" />
                     )}
@@ -1050,12 +1098,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
               {/* A ONLY MODE */}
               {compareMode === 'a' && (
-                <div className="w-full h-full relative">
+                <div className="w-full h-full relative overflow-hidden">
                   <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-blue-600/80 text-[9px] font-bold text-white uppercase">
                     Clip A (Primary)
                   </span>
                   {providerA === 'vimeo' ? (
                     <div ref={vimeoCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                  ) : providerA === 'youtube' ? (
+                    <div ref={youtubeCompareContainerARef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                   ) : (
                     <video
                       ref={html5VideoARef}
@@ -1071,12 +1121,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
               {/* B ONLY MODE */}
               {compareMode === 'b' && (
-                <div className="w-full h-full relative">
+                <div className="w-full h-full relative overflow-hidden">
                   <span className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-purple-600/80 text-[9px] font-bold text-white uppercase">
                     Clip B (Compare)
                   </span>
                   {providerB === 'vimeo' ? (
                     <div ref={vimeoCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
+                  ) : providerB === 'youtube' ? (
+                    <div ref={youtubeCompareContainerBRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
                   ) : (
                     <video ref={html5VideoBRef} src={cut.videoUrlB} playsInline muted className="w-full h-full object-contain" />
                   )}
@@ -1133,27 +1185,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             )
           )}
 
-          {/* On-Screen Drawing / Plate Markup / Still Overlay */}
-          {activeNoteWithMarkup && showMarkup && (
+          {/* On-Screen Vector Drawing Overlay (Transparent on top of video) */}
+          {activeNoteWithMarkup?.drawingData && showMarkup && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
-              {activeNoteWithMarkup.drawingData ? (
-                <img
-                  src={activeNoteWithMarkup.drawingData}
-                  alt="Markup"
-                  className="w-full h-full object-contain"
-                />
-              ) : activeNoteWithMarkup.stillImageUrl ? (
-                <img
-                  src={activeNoteWithMarkup.stillImageUrl}
-                  alt="Frame Still"
-                  className="w-full h-full object-contain"
-                />
-              ) : null}
+              <img
+                src={activeNoteWithMarkup.drawingData}
+                alt="Vector Markup"
+                className="w-full h-full object-contain pointer-events-none"
+              />
             </div>
           )}
 
           {/* Markup Visibility Toggle Button in Video Corner */}
-          {activeNoteWithMarkup && (activeNoteWithMarkup.drawingData || activeNoteWithMarkup.stillImageUrl) && (
+          {activeNoteWithMarkup?.drawingData && (
             <button
               type="button"
               onClick={() => setShowMarkup(!showMarkup)}

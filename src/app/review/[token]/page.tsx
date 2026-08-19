@@ -201,9 +201,9 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
   useEffect(() => {
     if (!cut) return;
 
-    const roomId = cut.id;
     const session = createRealtimeSession(
-      roomId,
+      cut.id,
+      project?.id || 'main',
       localUserIdRef.current,
       authorName,
       (event: SyncEvent) => {
@@ -222,6 +222,9 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
         } else if (event.type === 'NOTE_DELETE' && event.noteId) {
           setNotes(prev => prev.filter(n => n.id !== event.noteId));
         }
+      },
+      (freshNotes: ReviewNote[]) => {
+        setNotes(freshNotes);
       }
     );
 
@@ -229,7 +232,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
     return () => {
       session.cleanup();
     };
-  }, [cut?.id, authorName]);
+  }, [cut?.id, project?.id, authorName]);
 
   if (loading) {
     return (

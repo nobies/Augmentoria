@@ -142,9 +142,9 @@ export default function Home() {
   useEffect(() => {
     if (!activeCut) return;
 
-    const roomId = activeCut.id;
     const session = createRealtimeSession(
-      roomId,
+      activeCut.id,
+      activeProject?.id || 'main',
       localUserIdRef.current,
       authorName,
       (event: SyncEvent) => {
@@ -163,6 +163,9 @@ export default function Home() {
         } else if (event.type === 'NOTE_DELETE' && event.noteId) {
           setNotes(prev => prev.filter(n => n.id !== event.noteId));
         }
+      },
+      (freshNotes: ReviewNote[]) => {
+        setNotes(freshNotes);
       }
     );
 
@@ -170,7 +173,7 @@ export default function Home() {
     return () => {
       session.cleanup();
     };
-  }, [activeCut?.id, authorName]);
+  }, [activeCut?.id, activeProject?.id, authorName]);
 
   // Update Source
   const handleUpdateSource = async (

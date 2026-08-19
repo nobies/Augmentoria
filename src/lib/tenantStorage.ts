@@ -53,7 +53,7 @@ interface TenantDB extends DBSchema {
 }
 
 const DB_NAME = 'postflow_saas_db';
-const DB_VERSION = 3; // Version 3: Flagship Socialeyes Studio with 50 Global Clients & 500 Projects
+const DB_VERSION = 4; // Version 4: 100% embeddable video streams across all 50 global clients & 500 projects
 
 let dbPromise: Promise<IDBPDatabase<TenantDB>> | null = null;
 
@@ -446,16 +446,16 @@ const EXTENDED_BRANDS = [
 
 // Helper project title generator for extended brands
 const PROJECT_SUFFIXES = [
-  { prefix: 'Global Flagship Commercial', desc: 'Theatrical 60s broadcast master shot on ARRI Alexa 35 with custom anamorphic primes.', fps: 24, cs: 'DCI-P3', thumb: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=ScMzIvxBSi4' },
-  { prefix: 'Autumn Heritage Campaign', desc: 'Moody editorial fashion and cinematic product reveal captured in Scottish highlands.', fps: 24, cs: 'Rec.709', thumb: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=kJQP7kiw5Fk' },
-  { prefix: 'Next-Gen Performance Spot', desc: 'High-speed 120fps motion control tracking shots with dynamic lighting pass transitions.', fps: 60, cs: 'ACEScg', thumb: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' },
-  { prefix: 'Summer Digital Social Wave', desc: 'Viral 9:16 vertical cuts optimized for high engagement with kinetic sound design.', fps: 30, cs: 'sRGB', thumb: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=9bZkp7q19f0' },
-  { prefix: 'Origins & Craftsmanship Doc', desc: 'Intimate 4K documentary detailing artisans, raw materials, and precision manufacturing.', fps: 25, cs: 'Rec.2020', thumb: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
-  { prefix: 'Midnight City Night Run', desc: 'Low-light Sony Venice 2 captures under neon streetlights with custom film grain overlay.', fps: 24, cs: 'DCI-P3', thumb: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=JGwWNGJdvx8' },
-  { prefix: 'Super Bowl XL Anthem Spot', desc: 'Epic stadium anthem spot with 5.1 surround sound mix and massive CGI crowd extensions.', fps: 24, cs: 'Rec.709', thumb: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=ScMzIvxBSi4' },
-  { prefix: '3D Hologram Product Reveal', desc: 'Unreal Engine 5 real-time 3D exploded view dissecting internal engineering layers.', fps: 60, cs: 'ACEScg', thumb: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=kJQP7kiw5Fk' },
-  { prefix: 'Festival of Speed Live Cinema', desc: 'Live multi-camera broadcast stream package with real-time lower thirds and motion graphics.', fps: 50, cs: 'Rec.709', thumb: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' },
-  { prefix: 'Eco Sustainability Manifesto', desc: 'Inspiring worldwide documentary spotlighting renewable energy and zero carbon innovations.', fps: 24, cs: 'Rec.2020', thumb: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=9bZkp7q19f0' },
+  { prefix: 'Global Flagship Commercial', desc: 'Theatrical 60s broadcast master shot on ARRI Alexa 35 with custom anamorphic primes.', fps: 24, cs: 'DCI-P3', thumb: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' },
+  { prefix: 'Autumn Heritage Campaign', desc: 'Moody editorial fashion and cinematic product reveal captured in Scottish highlands.', fps: 24, cs: 'Rec.709', thumb: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=e-ORhEE9VVg' },
+  { prefix: 'Next-Gen Performance Spot', desc: 'High-speed 120fps motion control tracking shots with dynamic lighting pass transitions.', fps: 60, cs: 'ACEScg', thumb: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=WhY7uyc56Sc' },
+  { prefix: 'Summer Digital Social Wave', desc: 'Viral 9:16 vertical cuts optimized for high engagement with kinetic sound design.', fps: 30, cs: 'sRGB', thumb: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=R2fZ6bKk69A' },
+  { prefix: 'Origins & Craftsmanship Doc', desc: 'Intimate 4K documentary detailing artisans, raw materials, and precision manufacturing.', fps: 25, cs: 'Rec.2020', thumb: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&auto=format&fit=crop&q=80', vid: 'https://www.youtube.com/watch?v=YE7VzlLtp-4' },
+  { prefix: 'Midnight City Night Run', desc: 'Low-light Sony Venice 2 captures under neon streetlights with custom film grain overlay.', fps: 24, cs: 'DCI-P3', thumb: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop&q=80', vid: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' },
+  { prefix: 'Super Bowl XL Anthem Spot', desc: 'Epic stadium anthem spot with 5.1 surround sound mix and massive CGI crowd extensions.', fps: 24, cs: 'Rec.709', thumb: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&auto=format&fit=crop&q=80', vid: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4' },
+  { prefix: '3D Hologram Product Reveal', desc: 'Unreal Engine 5 real-time 3D exploded view dissecting internal engineering layers.', fps: 60, cs: 'ACEScg', thumb: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800&auto=format&fit=crop&q=80', vid: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' },
+  { prefix: 'Festival of Speed Live Cinema', desc: 'Live multi-camera broadcast stream package with real-time lower thirds and motion graphics.', fps: 50, cs: 'Rec.709', thumb: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80', vid: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4' },
+  { prefix: 'Eco Sustainability Manifesto', desc: 'Inspiring worldwide documentary spotlighting renewable energy and zero carbon innovations.', fps: 24, cs: 'Rec.2020', thumb: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=800&auto=format&fit=crop&q=80', vid: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4' },
 ];
 
 export const SEED_CLIENTS: Client[] = [];

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { VideoPlayer, VideoPlayerHandle } from '@/components/VideoPlayer';
 import { TimelineScrubber } from '@/components/TimelineScrubber';
@@ -44,13 +45,21 @@ import {
 } from '@/lib/storage';
 
 import {
+  getProjectById as getTenantProjectById,
+} from '@/lib/tenantStorage';
+
+import {
   secondsToDisplayTimecode,
   timecodeToFrames,
 } from '@/lib/timecode';
 
 import { createRealtimeSession, SyncEvent } from '@/lib/realtimeSync';
 
-export default function Home() {
+function ScreenerStudioContent() {
+  const searchParams = useSearchParams();
+  const requestedProjectId = searchParams.get('projectId');
+  const requestedCutId = searchParams.get('cutId');
+
   const [currentTool, setCurrentTool] = useState<string>('screener');
 
   // Reviewer Author Name
@@ -110,33 +119,65 @@ export default function Home() {
   const realtimeSessionRef = useRef<{ broadcast: (e: any) => void; cleanup: () => void } | null>(null);
   const localUserIdRef = useRef<string>(`user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
 
-  // Initial Load
+  // Initial Load with Query Params Support
   useEffect(() => {
     async function init() {
       const b = await getStudioBranding();
       setBranding(b);
 
       const projs = await getAllProjects();
+
+      let targetProj: Project | null = null;
+      if (requestedProjectId) {
+        targetProj = projs.find(p => p.id === requestedProjectId) || null;
+        if (!targetProj) {
+          const tenantProj = await getTenantProjectById(requestedProjectId);
+          if (tenantProj) {
+            targetProj = {
+              id: tenantProj.id,
+              name: tenantProj.name,
+              fps: tenantProj.fps,
+              dropFrame: tenantProj.dropFrame,
+              startTimecode: tenantProj.startTimecode,
+              createdAt: tenantProj.createdAt,
+            };
+            await saveProject(targetProj);
+            projs.unshift(targetProj);
+          }
+        }
+      }
+
       setProjects(projs);
 
-      if (projs.length > 0) {
-        const initialProj = projs[0];
-        setActiveProject(initialProj);
-        const pCuts = await getCutsForProject(initialProj.id);
+      const activeP = targetProj || (projs.length > 0 ? projs[0] : null);
+      if (activeP) {
+        setActiveProject(activeP);
+        const pCuts = await getCutsForProject(activeP.id);
         setCuts(pCuts);
 
-        if (pCuts.length > 0) {
-          const initialCut = pCuts[0];
-          setActiveCut(initialCut);
-          const vUrl = await getLocalVideoBlobUrl(initialCut.id);
+        let activeC: Cut | null = null;
+        if (requestedCutId) {
+          activeC = pCuts.find(c => c.id === requestedCutId) || null;
+        }
+        if (!activeC && pCuts.length > 0) {
+          activeC = pCuts[0];
+        }
+
+        if (activeC) {
+          setActiveCut(activeC);
+          const vUrl = await getLocalVideoBlobUrl(activeC.id);
           setLocalVideoUrl(vUrl);
-          const nts = await getNotesForCut(initialCut.id);
+          const nts = await getNotesForCut(activeC.id);
           setNotes(nts);
+        } else {
+          setActiveCut(null);
+          setLocalVideoUrl(null);
+          setNotes([]);
         }
       }
     }
     init();
-  }, []);
+  }, [requestedProjectId, requestedCutId]);
 
   // Initialize Realtime Sync Room for Active Cut
   useEffect(() => {
@@ -834,5 +875,22 @@ export default function Home() {
         />
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#090c13] text-slate-100 flex items-center justify-center">
+          <div className="flex items-center gap-3 text-slate-400">
+            <span className="w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+            <span className="text-xs font-semibold">Loading Screener Studio...</span>
+          </div>
+        </div>
+      }
+    >
+      <ScreenerStudioContent />
+    </Suspense>
   );
 }

@@ -31,6 +31,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { AppNavbar } from '@/components/shell/AppNavbar';
 import { Project, Client, Asset, AssetVersion, ReviewSession, ActivityLog, ProjectStatus } from '@/lib/types';
+import { saveCut, saveProject as saveProjectStorage } from '@/lib/storage';
 import {
   getProjectById,
   saveProject,
@@ -138,7 +139,17 @@ export default function ProjectDetailPage() {
     e.preventDefault();
     if (!project || !newCutName.trim()) return;
 
-    // Create parent asset container
+    // 1. Ensure project exists in Screener storage
+    await saveProjectStorage({
+      id: project.id,
+      name: project.name,
+      fps: project.fps,
+      dropFrame: project.dropFrame,
+      startTimecode: project.startTimecode,
+      createdAt: project.createdAt,
+    });
+
+    // 2. Create parent asset container
     const assetId = `asset_${Date.now()}`;
     const newAsset: Asset = {
       id: assetId,
@@ -150,9 +161,10 @@ export default function ProjectDetailPage() {
     };
     await saveAsset(newAsset);
 
-    // Create version v1/v2
+    // 3. Create version v1/v2
+    const cutId = `cut_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const newVersion: AssetVersion = {
-      id: `ver_${Date.now()}`,
+      id: cutId,
       assetId,
       projectId: project.id,
       companyId: project.companyId,
@@ -166,6 +178,17 @@ export default function ProjectDetailPage() {
       createdAt: new Date().toISOString(),
     };
     await saveAssetVersion(newVersion);
+
+    // 4. Save to Screener Cuts DB so it is instantly playable in Screener Studio
+    await saveCut({
+      id: cutId,
+      projectId: project.id,
+      name: newVersion.name,
+      provider: newCutProvider,
+      videoUrl: newCutUrl.trim(),
+      durationSeconds: 120,
+      createdAt: new Date().toISOString(),
+    });
 
     if (currentUser) {
       await logActivity({
@@ -311,7 +334,7 @@ export default function ProjectDetailPage() {
               )}
 
               <Link
-                href="/"
+                href={`/?projectId=${project.id}`}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-900/40 active:scale-95 transition"
               >
                 <Tv className="w-4 h-4" />
@@ -411,7 +434,7 @@ export default function ProjectDetailPage() {
                       </span>
 
                       <Link
-                        href="/"
+                        href={`/?projectId=${project.id}&cutId=${ver.id}`}
                         className="px-3 py-1.5 rounded-xl bg-[#182133] hover:bg-blue-600 hover:text-white text-blue-400 text-xs font-bold flex items-center gap-1 transition"
                       >
                         <Play className="w-3 h-3 fill-current" />

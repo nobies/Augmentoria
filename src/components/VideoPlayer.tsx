@@ -151,24 +151,21 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     );
     const currentAbsoluteFrame = startFramesOffset + Math.round(currentTime * project.fps);
 
-    // Active Note with Drawing strictly within its Frame or In/Out Range
+    // Active Note with Drawing strictly within its Frame or In/Out Range or when Selected
     const activeNoteWithMarkup = (() => {
-      if (selectedNote?.drawingData) {
-        const sStart = timecodeToFrames(selectedNote.timecode, project.fps, project.dropFrame);
-        const sEnd = selectedNote.timecodeOut
-          ? timecodeToFrames(selectedNote.timecodeOut, project.fps, project.dropFrame)
-          : sStart;
-        if (Math.abs(currentAbsoluteFrame - sStart) <= 1 || (currentAbsoluteFrame >= sStart && currentAbsoluteFrame <= sEnd)) {
-          return selectedNote;
-        }
+      if (selectedNote && (selectedNote.drawingData || selectedNote.stillImageUrl)) {
+        return selectedNote;
       }
       return notes.find(n => {
-        if (!n.drawingData) return false;
+        if (!n.drawingData && !n.stillImageUrl) return false;
         const startF = timecodeToFrames(n.timecode, project.fps, project.dropFrame);
         const endF = n.timecodeOut
           ? timecodeToFrames(n.timecodeOut, project.fps, project.dropFrame)
           : startF;
-        return currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF;
+        return (
+          Math.abs(currentAbsoluteFrame - startF) <= 3 ||
+          (currentAbsoluteFrame >= startF && currentAbsoluteFrame <= endF)
+        );
       });
     })();
 
@@ -1013,15 +1010,30 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             </div>
           ) : isCutYouTube ? (
             /* 2. YOUTUBE PLAYER */
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
+            <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
               <div ref={youtubeContainerRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
-              <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-10" />
+              {/* Immediate High-Res Poster Backdrop before first play */}
+              {!isPlaying && currentTime === 0 && vimeoPosterDataUrl && (
+                <img
+                  src={vimeoPosterDataUrl}
+                  alt="YouTube Preview"
+                  className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
+                />
+              )}
+              <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-15" />
             </div>
           ) : isCutVimeo ? (
             /* 3. VIMEO PLAYER */
-            <div className="w-full h-full relative flex items-center justify-center bg-black">
+            <div className="w-full h-full relative flex items-center justify-center bg-black overflow-hidden">
               <div ref={vimeoContainerRef} className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full" />
-              <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-10" />
+              {!isPlaying && currentTime === 0 && vimeoPosterDataUrl && (
+                <img
+                  src={vimeoPosterDataUrl}
+                  alt="Vimeo Preview"
+                  className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
+                />
+              )}
+              <div onClick={togglePlayback} className="absolute inset-0 cursor-pointer bg-transparent z-15" />
             </div>
           ) : (
             /* 4. HTML5 / LOCAL / DIRECT MP4 PLAYER */
@@ -1030,6 +1042,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 ref={videoRef}
                 src={videoSrc}
                 playsInline
+                preload="auto"
                 onTimeUpdate={handleHtml5TimeUpdate}
                 onLoadedMetadata={handleHtml5LoadedMetadata}
                 onEnded={() => setIsPlaying(false)}
@@ -1044,23 +1057,31 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             )
           )}
 
-          {/* On-Screen Drawing / Plate Markup Overlay */}
-          {activeNoteWithMarkup?.drawingData && showMarkup && (
+          {/* On-Screen Drawing / Plate Markup / Still Overlay */}
+          {activeNoteWithMarkup && showMarkup && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
-              <img
-                src={activeNoteWithMarkup.drawingData}
-                alt="Markup"
-                className="w-full h-full object-contain"
-              />
+              {activeNoteWithMarkup.drawingData ? (
+                <img
+                  src={activeNoteWithMarkup.drawingData}
+                  alt="Markup"
+                  className="w-full h-full object-contain"
+                />
+              ) : activeNoteWithMarkup.stillImageUrl ? (
+                <img
+                  src={activeNoteWithMarkup.stillImageUrl}
+                  alt="Frame Still"
+                  className="w-full h-full object-contain"
+                />
+              ) : null}
             </div>
           )}
 
           {/* Markup Visibility Toggle Button in Video Corner */}
-          {activeNoteWithMarkup?.drawingData && (
+          {activeNoteWithMarkup && (activeNoteWithMarkup.drawingData || activeNoteWithMarkup.stillImageUrl) && (
             <button
               type="button"
               onClick={() => setShowMarkup(!showMarkup)}
-              className="absolute top-2 right-2 z-30 px-2.5 py-1 rounded-lg bg-black/85 backdrop-blur-md border border-amber-500/50 text-amber-300 text-[10px] font-bold flex items-center gap-1.5 shadow-xl hover:bg-black transition active:scale-95"
+              className="absolute top-2 right-2 z-30 px-2.5 py-1 rounded-lg bg-black/85 backdrop-blur-md border border-amber-500/50 text-amber-300 text-[10px] font-bold flex items-center gap-1.5 shadow-xl hover:bg-black transition active:scale-95 pointer-events-auto"
               title="Toggle Markup Visibility"
             >
               {showMarkup ? <Eye className="w-3.5 h-3.5 text-amber-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}

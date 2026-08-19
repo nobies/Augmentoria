@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import {
   Folder,
   Share2,
@@ -12,6 +13,7 @@ import {
   Download,
   Database,
   Cloud,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Project, Cut, StudioBranding, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -70,6 +72,16 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
         </button>
+
+        {/* Dashboard Link */}
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#141b29] hover:bg-[#1c2538] border border-[#222c42] text-xs font-bold text-slate-300 hover:text-white transition"
+          title="Return to Studio Dashboard"
+        >
+          <LayoutDashboard className="w-3.5 h-3.5 text-blue-400" />
+          <span className="hidden sm:inline">Hub</span>
+        </Link>
 
         <span className="text-slate-600 font-mono text-xs hidden sm:inline">/</span>
 

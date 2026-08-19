@@ -314,27 +314,23 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     fCtx.drawImage(drawingCanvas, 0, 0);
     const drawingDataUrl = finalDrawingCanvas.toDataURL('image/png');
 
-    // 2. Composite snapshot with video frame background
-    const snapshotCanvas = document.createElement('canvas');
-    snapshotCanvas.width = CANVAS_WIDTH;
-    snapshotCanvas.height = CANVAS_HEIGHT;
-    const sCtx = snapshotCanvas.getContext('2d');
-    if (!sCtx) return;
-
+    // 2. Composite snapshot with video frame background (if HTML5 video available)
+    let snapshotDataUrl = drawingDataUrl;
     if (videoElement && videoElement.videoWidth > 0) {
-      sCtx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    } else if (posterDataUrl) {
-      const img = new Image();
-      img.src = posterDataUrl;
-      sCtx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    } else {
-      sCtx.fillStyle = '#0f172a';
-      sCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      try {
+        const snapshotCanvas = document.createElement('canvas');
+        snapshotCanvas.width = CANVAS_WIDTH;
+        snapshotCanvas.height = CANVAS_HEIGHT;
+        const sCtx = snapshotCanvas.getContext('2d');
+        if (sCtx) {
+          sCtx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+          sCtx.drawImage(finalDrawingCanvas, 0, 0);
+          snapshotDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.9);
+        }
+      } catch (e) {
+        snapshotDataUrl = drawingDataUrl;
+      }
     }
-
-    // Composite vector overlay onto snapshot
-    sCtx.drawImage(finalDrawingCanvas, 0, 0);
-    const snapshotDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.9);
 
     onSaveDrawing(drawingDataUrl, snapshotDataUrl);
   };

@@ -197,9 +197,11 @@ export default function DashboardPage() {
                         {getStatusBadge(proj.status)}
                         <span className="text-[10px] font-mono font-bold text-slate-500">{proj.fps} fps</span>
                       </div>
-                      <h3 className="text-sm font-bold text-white group-hover:text-blue-400 transition leading-snug">
-                        {proj.name}
-                      </h3>
+                      <Link href={`/projects/${proj.id}`}>
+                        <h3 className="text-sm font-bold text-white hover:text-blue-400 transition leading-snug cursor-pointer">
+                          {proj.name}
+                        </h3>
+                      </Link>
                       {client && (
                         <span className="text-[11px] font-semibold text-slate-400 block mt-1">
                           Client: <span className="text-slate-300">{client.name}</span>
@@ -213,11 +215,11 @@ export default function DashboardPage() {
                         TC: {proj.startTimecode}
                       </span>
                       <Link
-                        href="/"
+                        href={`/projects/${proj.id}`}
                         className="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-bold transition"
                       >
                         <Play className="w-3 h-3 fill-current" />
-                        <span>Launch</span>
+                        <span>Open Hub</span>
                       </Link>
                     </div>
                   </div>

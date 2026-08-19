@@ -220,9 +220,11 @@ export default function ProjectsPage() {
                           {proj.fps} FPS
                         </span>
                       </div>
-                      <h3 className="text-base font-bold text-white group-hover:text-blue-400 transition leading-snug">
-                        {proj.name}
-                      </h3>
+                      <Link href={`/projects/${proj.id}`}>
+                        <h3 className="text-base font-bold text-white hover:text-blue-400 transition leading-snug cursor-pointer">
+                          {proj.name}
+                        </h3>
+                      </Link>
                       {client && (
                         <div className="flex items-center gap-1 text-xs text-slate-400 mt-1">
                           <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
@@ -249,11 +251,11 @@ export default function ProjectsPage() {
                           </button>
                         )}
                         <Link
-                          href="/"
+                          href={`/projects/${proj.id}`}
                           className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition active:scale-95"
                         >
-                          <Tv className="w-3.5 h-3.5" />
-                          <span>Review Cut</span>
+                          <FolderKanban className="w-3.5 h-3.5" />
+                          <span>Manage Hub</span>
                         </Link>
                       </div>
                     </div>
@@ -281,20 +283,17 @@ export default function ProjectsPage() {
 
                   <div className="space-y-2.5 flex-1">
                     {colProjects.map(proj => (
-                      <div
+                      <Link
                         key={proj.id}
-                        className="p-3.5 rounded-xl bg-[#141b29] border border-[#222c42] hover:border-blue-500/40 transition shadow"
+                        href={`/projects/${proj.id}`}
+                        className="block p-3.5 rounded-xl bg-[#141b29] border border-[#222c42] hover:border-blue-500/50 hover:bg-[#182133] transition shadow cursor-pointer"
                       >
                         <span className="text-[10px] font-mono text-slate-500">{proj.fps} fps</span>
                         <h4 className="text-xs font-bold text-white leading-tight mt-0.5 mb-1">{proj.name}</h4>
-                        <Link
-                          href="/"
-                          className="text-[10px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 mt-2"
-                        >
-                          <Play className="w-2.5 h-2.5 fill-current" />
-                          <span>Launch Screener</span>
-                        </Link>
-                      </div>
+                        <span className="text-[10px] text-blue-400 font-bold flex items-center gap-1 mt-2">
+                          <span>Open Project Hub →</span>
+                        </span>
+                      </Link>
                     ))}
                   </div>
                 </div>

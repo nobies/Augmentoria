@@ -838,3 +838,59 @@ export async function logActivity(log: Omit<ActivityLog, 'id' | 'createdAt'>): P
   };
   if (db) await db.put('activityLogs', newLog);
 }
+
+// ----------------------------------------------------
+// ASSETS & VERSIONS
+// ----------------------------------------------------
+export async function getAssetsByProject(projectId: string): Promise<Asset[]> {
+  const db = await getTenantDB();
+  if (!db) return [];
+  await initTenantSeed();
+  return db.getAllFromIndex('assets', 'by-project', projectId);
+}
+
+export async function saveAsset(asset: Asset): Promise<void> {
+  const db = await getTenantDB();
+  if (db) await db.put('assets', asset);
+}
+
+export async function deleteAsset(assetId: string): Promise<void> {
+  const db = await getTenantDB();
+  if (db) await db.delete('assets', assetId);
+}
+
+export async function getAssetVersionsByAsset(assetId: string): Promise<AssetVersion[]> {
+  const db = await getTenantDB();
+  if (!db) return [];
+  await initTenantSeed();
+  const versions = await db.getAllFromIndex('assetVersions', 'by-asset', assetId);
+  return versions.sort((a, b) => b.versionNumber - a.versionNumber);
+}
+
+export async function getAssetVersionsByProject(projectId: string): Promise<AssetVersion[]> {
+  const db = await getTenantDB();
+  if (!db) return [];
+  await initTenantSeed();
+  return db.getAllFromIndex('assetVersions', 'by-project', projectId);
+}
+
+export async function saveAssetVersion(version: AssetVersion): Promise<void> {
+  const db = await getTenantDB();
+  if (db) await db.put('assetVersions', version);
+}
+
+// ----------------------------------------------------
+// REVIEW SESSIONS
+// ----------------------------------------------------
+export async function getReviewSessionsByProject(projectId: string): Promise<ReviewSession[]> {
+  const db = await getTenantDB();
+  if (!db) return [];
+  await initTenantSeed();
+  return db.getAllFromIndex('reviewSessions', 'by-project', projectId);
+}
+
+export async function saveReviewSession(session: ReviewSession): Promise<void> {
+  const db = await getTenantDB();
+  if (db) await db.put('reviewSessions', session);
+}
+

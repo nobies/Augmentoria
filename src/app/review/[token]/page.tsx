@@ -385,33 +385,36 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#090c13] text-slate-100 select-none">
+    <div className="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-[#090c13] text-slate-100 select-none">
       {/* Client Header */}
-      <header className="h-12 bg-[#0c1018] border-b border-[#1c2438] px-4 flex items-center justify-between z-30 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-xs shadow-lg shadow-blue-900/30">
+      <header className="min-h-[48px] bg-[#0c1018] border-b border-[#1c2438] px-3 sm:px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 z-30 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <div
+            style={{ backgroundColor: branding.primaryColor || '#3b82f6' }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs shadow-lg shadow-blue-900/30 shrink-0"
+          >
             {branding.name?.charAt(0) || 'S'}
           </div>
           <div>
-            <span className="text-xs font-black text-white block leading-none">{branding.name}</span>
+            <span className="text-xs font-black text-white block leading-none truncate max-w-[120px] sm:max-w-[160px]">{branding.name}</span>
             <span className="text-[9px] text-slate-400 leading-none">Client Review Session</span>
           </div>
 
-          <span className="text-slate-600 font-mono text-xs">/</span>
+          <span className="text-slate-600 font-mono text-xs hidden xs:inline">/</span>
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#141b29] border border-[#222c42] text-xs font-bold text-slate-200">
-            <span className="text-blue-400">{project.name}</span>
+            <span className="text-blue-400 truncate max-w-[100px] sm:max-w-[140px]">{project.name}</span>
             <span className="text-slate-500">•</span>
-            <span className="text-slate-300">{cut.name}</span>
+            <span className="text-slate-300 truncate max-w-[90px] sm:max-w-[120px]">{cut.name}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Live Session Control Button */}
           <button
             type="button"
             onClick={() => setHasControl(!hasControl)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
               hasControl
                 ? 'bg-emerald-600/20 border border-emerald-500 text-emerald-300'
                 : 'bg-[#141b29] border border-[#232d44] text-slate-400 hover:text-white'
@@ -419,12 +422,13 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
             title="Toggle session control"
           >
             <Radio className={`w-3.5 h-3.5 ${hasControl ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
-            <span>{hasControl ? 'You Have Control' : 'Request Control'}</span>
+            <span className="hidden xs:inline">{hasControl ? 'You Have Control' : 'Request Control'}</span>
+            <span className="xs:hidden">{hasControl ? 'In Control' : 'Control'}</span>
           </button>
 
           {permissions.viewOnly && (
-            <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[10px] font-bold">
-              View-Only Mode
+            <span className="px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[10px] font-bold">
+              View-Only
             </span>
           )}
 
@@ -433,16 +437,16 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
               onClick={() => setIsExportOpen(true)}
               className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow transition active:scale-95"
             >
-              Export Notes
+              Export
             </button>
           )}
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="flex-1 p-2.5 flex gap-2.5 overflow-hidden max-w-[1920px] w-full mx-auto min-h-0">
+      {/* Main Workspace (Responsive) */}
+      <main className="flex-1 p-2 sm:p-2.5 flex flex-col lg:flex-row gap-2 sm:gap-2.5 overflow-y-auto lg:overflow-hidden max-w-[1920px] w-full mx-auto min-h-0">
         <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0">
-          <div className="flex-1 relative flex flex-col min-h-0">
+          <div className="flex-1 relative flex flex-col min-h-[280px] xs:min-h-[340px] sm:min-h-[420px] lg:min-h-0">
             <VideoPlayer
               ref={videoPlayerRef}
               cut={cut}
@@ -572,7 +576,7 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
             onLivePreviewChange={setLivePreviewGrade}
           />
         ) : (
-          <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
+          <div className="w-full lg:w-[320px] xl:w-[350px] flex flex-col min-h-[340px] lg:min-h-0 shrink-0">
             <NotesList
               notes={notes}
               selectedNoteId={selectedNote?.id || null}

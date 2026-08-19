@@ -573,7 +573,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#090c13] text-slate-100 select-none">
+    <div className="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden bg-[#090c13] text-slate-100 select-none">
       {/* Top Action Icons Header */}
       <Header
         currentTool={currentTool}
@@ -591,12 +591,12 @@ export default function Home() {
         onOpenAddMedia={() => setIsAddMediaOpen(true)}
       />
 
-      {/* Main Studio Hub (Full 100vh Fit, 0 Page Scroll) */}
-      <main className="flex-1 p-2.5 flex gap-2.5 overflow-hidden max-w-[1920px] w-full mx-auto min-h-0">
+      {/* Main Studio Hub (Responsive 100vh on Desktop, Flex Column Scroll on Mobile) */}
+      <main className="flex-1 p-2 sm:p-2.5 flex flex-col lg:flex-row gap-2 sm:gap-2.5 overflow-y-auto lg:overflow-hidden max-w-[1920px] w-full mx-auto min-h-0">
         {/* Left / Center: Video Player + Timeline + Preset Console */}
         <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0">
           {/* Main Video Box with Integrated Header */}
-          <div className="flex-1 relative flex flex-col min-h-0">
+          <div className="flex-1 relative flex flex-col min-h-[280px] xs:min-h-[340px] sm:min-h-[420px] lg:min-h-0">
             {activeCut && activeProject ? (
               <VideoPlayer
                 ref={videoPlayerRef}
@@ -619,8 +619,14 @@ export default function Home() {
                 onUpdateStartTc={handleUpdateStartTc}
               />
             ) : (
-              <div className="flex-1 bg-[#111622] rounded-2xl flex items-center justify-center border border-[#1e273b] text-slate-500">
-                Select a project to start
+              <div className="flex-1 min-h-[220px] bg-[#111622] rounded-2xl flex flex-col items-center justify-center border border-[#1e273b] text-slate-400 gap-3 p-6 text-center">
+                <p className="text-sm font-semibold">No project selected</p>
+                <button
+                  onClick={() => setIsProjectsOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/30 transition active:scale-95"
+                >
+                  Create or Select a Project
+                </button>
               </div>
             )}
 
@@ -708,7 +714,7 @@ export default function Home() {
             onLivePreviewChange={setLivePreviewGrade}
           />
         ) : (
-          <div className="w-[320px] lg:w-[350px] flex flex-col min-h-0 shrink-0">
+          <div className="w-full lg:w-[320px] xl:w-[350px] flex flex-col min-h-[340px] lg:min-h-0 shrink-0">
             <NotesList
               notes={notes}
               selectedNoteId={selectedNote?.id || null}

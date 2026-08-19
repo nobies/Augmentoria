@@ -175,10 +175,10 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
       : '#10b981';
 
   return (
-    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-2.5 flex flex-col gap-2 shadow-2xl shrink-0">
-      {/* Category Tabs (Exact Screenshot 2 Underline Style) */}
-      <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[#1d2538] pb-1.5">
-        <div className="flex items-center gap-4">
+    <div className="bg-[#111724] border border-[#20293d] rounded-2xl p-2 sm:p-2.5 flex flex-col gap-2 shadow-2xl shrink-0">
+      {/* Category Tabs */}
+      <div className="flex items-center justify-between gap-2 border-b border-[#1d2538] pb-1.5 flex-wrap">
+        <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto max-w-full pb-0.5 scrollbar-none">
           {categories.map(cat => {
             const isSelected = activeCategory === cat.id;
             return (
@@ -188,7 +188,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
                   setActiveCategory(cat.id);
                   setSelectedKey(cat.keys[0] || 'Flag');
                 }}
-                className={`text-xs font-bold transition relative pb-1 ${
+                className={`text-xs font-bold transition relative pb-1 whitespace-nowrap shrink-0 ${
                   isSelected ? 'text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -205,24 +205,24 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
         </div>
 
         {/* Current Timecode / In-Out Range indicator */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {inTc && (
-            <div className="flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            <div className="flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 sm:px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
               <span>IN: {inTc}</span>
               {outTc && <span>→ OUT: {outTc}</span>}
-              <button onClick={onClearRange} className="ml-1 text-slate-400 hover:text-white">
+              <button onClick={onClearRange} className="ml-1 text-slate-400 hover:text-white" aria-label="Clear Range">
                 ×
               </button>
             </div>
           )}
-          <div className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-[#161e2e] border border-[#26334d] text-blue-400">
+          <div className="text-[10px] sm:text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-[#161e2e] border border-[#26334d] text-blue-400">
             {currentTc}
           </div>
         </div>
       </div>
 
-      {/* Preset Action Keys with Left Vertical Accent Bar (Screenshot 2) */}
-      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+      {/* Preset Action Keys with Left Vertical Accent Bar (Responsive Grid) */}
+      <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5">
         {currentCategoryObj.keys.map(k => {
           const isSelected = selectedKey === k;
           return (
@@ -230,14 +230,14 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
               key={k}
               onClick={() => handleKeyClick(k)}
               style={{ borderLeftColor: accentColor }}
-              className={`h-9 rounded-lg border border-l-[3.5px] px-2 text-center text-[11px] font-bold transition active:scale-95 flex items-center justify-center relative ${
+              className={`h-8 sm:h-9 rounded-lg border border-l-[3.5px] px-1.5 sm:px-2 text-center text-[10px] sm:text-[11px] font-bold transition active:scale-95 flex items-center justify-center relative ${
                 isSelected
                   ? 'bg-[#1e273a] border-slate-500 text-white shadow'
                   : 'bg-[#141b29] border-[#222c42] text-slate-200 hover:bg-[#1a2336] hover:text-white'
               }`}
               title={`Stamp [${k}] at ${currentTc}`}
             >
-              <span>{k}</span>
+              <span className="truncate">{k}</span>
             </button>
           );
         })}
@@ -247,7 +247,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           <button
             type="button"
             onClick={onOpenNotekeys}
-            className="h-9 rounded-lg border border-dashed border-[#2b3952] hover:border-blue-500 text-[11px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1 transition"
+            className="h-8 sm:h-9 rounded-lg border border-dashed border-[#2b3952] hover:border-blue-500 text-[10px] sm:text-[11px] font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1 transition"
           >
             <Plus className="w-3 h-3" />
             <span>Add key</span>
@@ -256,7 +256,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
       </div>
 
       {/* Quick Custom Comment Form */}
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 pt-0.5">
+      <form onSubmit={handleSubmit} className="flex items-center gap-1.5 sm:gap-2 pt-0.5">
         {activeDrawingSnapshot && (
           <div className="relative group shrink-0">
             <img
@@ -268,6 +268,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
               type="button"
               onClick={onClearDrawingSnapshot}
               className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white text-[8px] flex items-center justify-center"
+              aria-label="Remove drawing snapshot"
             >
               ×
             </button>
@@ -277,7 +278,7 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
         {activeAudioBlob && (
           <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-bold shrink-0">
             <span>Voice</span>
-            <button type="button" onClick={onClearAudioBlob} className="ml-0.5 text-slate-400 hover:text-white">
+            <button type="button" onClick={onClearAudioBlob} className="ml-0.5 text-slate-400 hover:text-white" aria-label="Remove audio">
               ×
             </button>
           </div>
@@ -288,15 +289,16 @@ export const PresetKeys: React.FC<PresetKeysProps> = ({
           value={customText}
           onChange={e => setCustomText(e.target.value)}
           placeholder={`Add custom comment at ${currentTc}...`}
-          className="flex-1 px-3 py-1.5 rounded-xl bg-[#090d14] border border-[#222c42] text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
+          className="flex-1 min-w-0 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#090d14] border border-[#222c42] text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
         />
 
         <button
           type="submit"
           className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow transition active:scale-95 shrink-0"
+          aria-label="Add note"
         >
           <Send className="w-3 h-3" />
-          <span>Add</span>
+          <span className="hidden xs:inline">Add</span>
         </button>
       </form>
     </div>

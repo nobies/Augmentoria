@@ -843,13 +843,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }, [isPlaying, duration, project.fps, currentTime]);
 
     const videoSrc =
-      cut.provider === 'local'
-        ? localVideoUrl || cut.videoUrl || ''
-        : cut.provider === 'drive'
-        ? `/api/video/${cut.driveFileId}`
-        : providerA === 'web'
-        ? cut.videoUrl
-        : '';
+      localVideoUrl ||
+      cut.videoUrl ||
+      (cut.provider === 'drive' && cut.driveFileId ? `/api/video/${cut.driveFileId}` : '');
 
     return (
       <div className="flex flex-col bg-[#0b0e16] border border-[#1e273b] rounded-2xl overflow-hidden shadow-2xl flex-1 min-h-0">

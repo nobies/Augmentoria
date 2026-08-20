@@ -20,6 +20,9 @@ export interface Company {
   name: string;
   slug: string;
   tagline?: string;
+  description?: string;
+  website?: string;
+  address?: string;
   brandPrimary: string;
   brandSecondary: string;
   logoUrl?: string;
@@ -47,6 +50,9 @@ export interface Client {
   email: string;
   phone?: string;
   logoUrl?: string;
+  accentColor?: string; // Hex color for dynamic client UI theming (e.g. #E60000 for Vodafone, #DC0A2D for Red Bull)
+  website?: string;
+  industry?: string;
   notes?: string;
   createdAt: string;
 }
@@ -60,10 +66,12 @@ export interface Project {
   fps: number;
   dropFrame: boolean;
   startTimecode: string;
+  colorSpace?: string; // e.g. "Rec.709", "DCI-P3", "Rec.2020", "ACEScg", "sRGB"
   status: ProjectStatus;
   primaryColor?: string;
   secondaryColor?: string;
   coverUrl?: string;
+  thumbnailUrl?: string;
   assignedUserIds?: string[];
   createdAt: string;
   updatedAt: string;
@@ -86,10 +94,11 @@ export interface AssetVersion {
   companyId: string;
   versionNumber: number;
   name: string;
-  provider: 'local' | 'drive' | 'youtube' | 'vimeo' | 'standalone' | 'compare';
+  provider: 'local' | 'drive' | 'youtube' | 'vimeo' | 'standalone' | 'compare' | 'instagram' | 'tiktok';
   videoUrl?: string;
   videoUrlB?: string;
   proxyUrl?: string;
+  thumbnailUrl?: string;
   durationSeconds: number;
   uploadedByUserId: string;
   uploadedByUserName: string;

@@ -16,10 +16,14 @@ import {
   getAllUsers,
   getUsersByCompany,
   saveUser,
+  deleteUser as dbDeleteUser,
   getClientsByCompany,
   saveClient,
+  updateClient as dbUpdateClient,
+  deleteClient as dbDeleteClient,
   getProjectsByCompany,
   saveProject,
+  updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
   getActivityLogsByCompany,
   logActivity,
@@ -59,9 +63,13 @@ interface AuthContextType {
   updateCompanyBranding: (branding: Partial<Company>) => Promise<void>;
   createNewCompany: (name: string, plan?: 'starter' | 'pro' | 'enterprise') => Promise<Company>;
   addProject: (data: Omit<Project, 'id' | 'companyId' | 'createdAt' | 'updatedAt'>) => Promise<Project>;
+  updateProject: (projectId: string, data: Partial<Project>) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   addClient: (data: Omit<Client, 'id' | 'companyId' | 'createdAt'>) => Promise<Client>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
   addTeamMember: (data: Omit<User, 'id' | 'companyId' | 'createdAt'>) => Promise<User>;
+  deleteTeamMember: (userId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -313,6 +321,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await refreshData();
   };
 
+  const updateProject = async (projectId: string, data: Partial<Project>) => {
+    if (!currentCompany) return;
+    const updated = await dbUpdateProject(projectId, data);
+    if (updated) {
+      setCompanyProjects(prev => prev.map(p => (p.id === projectId ? updated : p)));
+      if (currentUser) {
+        await logActivity({
+          companyId: currentCompany.id,
+          projectId,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userRole: currentUser.role,
+          action: 'Updated Project Settings',
+          details: `Updated project "${updated.name}" settings`,
+        });
+      }
+      await refreshData();
+    }
+  };
+
   const addClient = async (data: Omit<Client, 'id' | 'companyId' | 'createdAt'>) => {
     if (!currentCompany || !currentUser) throw new Error('No active company');
     const newClient: Client = {
@@ -336,6 +364,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return newClient;
   };
 
+  const updateClient = async (clientId: string, data: Partial<Client>) => {
+    if (!currentCompany) return;
+    const updated = await dbUpdateClient(clientId, data);
+    if (updated) {
+      setCompanyClients(prev => prev.map(c => (c.id === clientId ? updated : c)));
+      if (currentUser) {
+        await logActivity({
+          companyId: currentCompany.id,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userRole: currentUser.role,
+          action: 'Updated Client Profile',
+          details: `Updated client "${updated.name}" branding & profile`,
+        });
+      }
+      await refreshData();
+    }
+  };
+
+  const deleteClient = async (clientId: string) => {
+    if (!currentCompany) return;
+    await dbDeleteClient(clientId);
+    setCompanyClients(prev => prev.filter(c => c.id !== clientId));
+    if (currentUser) {
+      await logActivity({
+        companyId: currentCompany.id,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUser.role,
+        action: 'Deleted Client',
+        details: `Deleted client ${clientId}`,
+      });
+    }
+    await refreshData();
+  };
+
   const addTeamMember = async (data: Omit<User, 'id' | 'companyId' | 'createdAt'>) => {
     if (!currentCompany || !currentUser) throw new Error('No active company');
     const newUser: User = {
@@ -357,6 +421,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
     await refreshData();
     return newUser;
+  };
+
+  const deleteTeamMember = async (userId: string) => {
+    if (!currentCompany) return;
+    await dbDeleteUser(userId);
+    setCompanyUsers(prev => prev.filter(u => u.id !== userId));
+    if (currentUser) {
+      await logActivity({
+        companyId: currentCompany.id,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUser.role,
+        action: 'Removed Team Member',
+        details: `Removed user ${userId}`,
+      });
+    }
+    await refreshData();
   };
 
   // Role checks
@@ -408,9 +489,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateCompanyBranding,
         createNewCompany,
         addProject,
+        updateProject,
         deleteProject,
         addClient,
+        updateClient,
+        deleteClient,
         addTeamMember,
+        deleteTeamMember,
       }}
     >
       {children}

@@ -204,29 +204,39 @@ export const NotesList: React.FC<NotesListProps> = ({
                 }`}
               >
                 <div className="flex gap-2 items-start">
-                  {/* Thumbnail Still Image */}
+                  {/* Thumbnail Still / Drawing / SMPTE Frame Card */}
                   <div
                     onClick={e => {
-                      if (n.stillImageUrl) {
+                      if (n.stillImageUrl || n.drawingData) {
                         e.stopPropagation();
-                        setPreviewImage(n.stillImageUrl);
+                        setPreviewImage(n.stillImageUrl || n.drawingData || null);
                       }
                     }}
-                    className="relative w-14 sm:w-16 h-10 sm:h-11 rounded-lg bg-[#0b0e16] border border-[#232d44] overflow-hidden shrink-0 group/thumb cursor-zoom-in flex items-center justify-center"
+                    className="relative w-14 sm:w-16 h-10 sm:h-11 rounded-lg bg-[#0a0e17] border border-[#232d44] overflow-hidden shrink-0 group/thumb cursor-zoom-in flex items-center justify-center"
                   >
-                    {n.stillImageUrl ? (
+                    {n.drawingData ? (
+                      <div className="w-full h-full relative bg-[#090d15] flex items-center justify-center p-0.5">
+                        <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:6px_6px] opacity-30 pointer-events-none" />
+                        <img src={n.drawingData} alt="Drawing Markup" className="w-full h-full object-contain relative z-10" />
+                      </div>
+                    ) : n.stillImageUrl && !n.stillImageUrl.includes('hqdefault.jpg') ? (
                       <img src={n.stillImageUrl} alt="Frame" className="w-full h-full object-cover" />
                     ) : (
-                      <Film className="w-3.5 h-3.5 text-slate-600" />
+                      <div className="w-full h-full bg-[#0a0e17] flex flex-col items-center justify-center p-1 text-center">
+                        <Film className="w-3.5 h-3.5 text-blue-400/80 mb-0.5" />
+                        <span className="text-[7.5px] font-mono font-bold text-slate-300 leading-none tracking-tight">
+                          {n.timecode.slice(3, 8)}
+                        </span>
+                      </div>
                     )}
 
                     {n.drawingData && (
-                      <div className="absolute bottom-0.5 right-0.5 p-0.5 rounded bg-amber-500 text-black text-[8px]" title="Drawing Markup">
+                      <div className="absolute bottom-0.5 right-0.5 p-0.5 rounded bg-amber-500 text-black text-[8px] z-20" title="Drawing Markup">
                         <PenTool className="w-2 h-2" />
                       </div>
                     )}
                     {n.colorGrade && (
-                      <div className="absolute bottom-0.5 left-0.5 p-0.5 rounded bg-purple-600 text-white text-[8px]" title="Color Grade Attached">
+                      <div className="absolute bottom-0.5 left-0.5 p-0.5 rounded bg-purple-600 text-white text-[8px] z-20" title="Color Grade Attached">
                         <Palette className="w-2 h-2" />
                       </div>
                     )}

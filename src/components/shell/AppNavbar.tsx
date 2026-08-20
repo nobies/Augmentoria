@@ -96,12 +96,20 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
               }`}
               title={canSwitchCompany ? 'Switch Studio Tenant (Super Admin)' : `${currentCompany?.name} (Locked Workspace)`}
             >
-              <div
-                style={{ backgroundColor: currentCompany?.brandPrimary || '#3b82f6' }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs shadow-lg shadow-blue-900/30 shrink-0"
-              >
-                {currentCompany?.name?.charAt(0) || 'P'}
-              </div>
+              {currentCompany?.logoUrl ? (
+                <img
+                  src={currentCompany.logoUrl}
+                  alt={currentCompany.name}
+                  className="w-7 h-7 rounded-lg object-cover border border-[#2d3a54] shrink-0"
+                />
+              ) : (
+                <div
+                  style={{ backgroundColor: currentCompany?.brandPrimary || '#3b82f6' }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs shadow-lg shadow-blue-900/30 shrink-0"
+                >
+                  {currentCompany?.name?.charAt(0) || 'S'}
+                </div>
+              )}
               <div className="text-left hidden sm:block">
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-black text-white leading-none block truncate max-w-[130px]">
@@ -143,12 +151,20 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({ onOpenBranding }) => {
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <div
-                            style={{ backgroundColor: c.brandPrimary }}
-                            className="w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] text-white shrink-0"
-                          >
-                            {c.name.charAt(0)}
-                          </div>
+                          {c.logoUrl ? (
+                            <img
+                              src={c.logoUrl}
+                              alt={c.name}
+                              className="w-6 h-6 rounded-md object-cover shrink-0 border border-[#2d3a54]"
+                            />
+                          ) : (
+                            <div
+                              style={{ backgroundColor: c.brandPrimary }}
+                              className="w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] text-white shrink-0"
+                            >
+                              {c.name.charAt(0)}
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <span className="text-xs font-bold block leading-none truncate max-w-[170px]">{c.name}</span>
                             <span className="text-[9px] text-slate-400 capitalize">{c.plan} Plan</span>

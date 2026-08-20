@@ -46,6 +46,8 @@ import {
 
 import {
   getProjectById as getTenantProjectById,
+  getProjectsByCompany,
+  getAssetVersionsByProject,
 } from '@/lib/tenantStorage';
 
 import {
@@ -152,7 +154,25 @@ function ScreenerStudioContent() {
       const activeP = targetProj || (projs.length > 0 ? projs[0] : null);
       if (activeP) {
         setActiveProject(activeP);
-        const pCuts = await getCutsForProject(activeP.id);
+        let pCuts = await getCutsForProject(activeP.id);
+        if (pCuts.length === 0) {
+          const versions = await getAssetVersionsByProject(activeP.id);
+          if (versions.length > 0) {
+            for (const v of versions) {
+              const newCut: Cut = {
+                id: v.id,
+                projectId: activeP.id,
+                name: v.name,
+                provider: v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local',
+                videoUrl: v.videoUrl,
+                durationSeconds: v.durationSeconds || 120,
+                createdAt: v.createdAt,
+              };
+              await saveCut(newCut);
+              pCuts.push(newCut);
+            }
+          }
+        }
         setCuts(pCuts);
 
         let activeC: Cut | null = null;
@@ -326,7 +346,25 @@ function ScreenerStudioContent() {
   // Switch Project
   const handleSelectProject = async (proj: Project) => {
     setActiveProject(proj);
-    const pCuts = await getCutsForProject(proj.id);
+    let pCuts = await getCutsForProject(proj.id);
+    if (pCuts.length === 0) {
+      const versions = await getAssetVersionsByProject(proj.id);
+      if (versions.length > 0) {
+        for (const v of versions) {
+          const newCut: Cut = {
+            id: v.id,
+            projectId: proj.id,
+            name: v.name,
+            provider: v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local',
+            videoUrl: v.videoUrl,
+            durationSeconds: v.durationSeconds || 120,
+            createdAt: v.createdAt,
+          };
+          await saveCut(newCut);
+          pCuts.push(newCut);
+        }
+      }
+    }
     setCuts(pCuts);
     if (pCuts.length > 0) {
       handleSelectCut(pCuts[0]);

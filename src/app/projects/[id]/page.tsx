@@ -27,10 +27,16 @@ import {
   Copy,
   Check,
   CheckSquare,
+  Trash2,
+  Sliders,
+  Globe,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { AppNavbar } from '@/components/shell/AppNavbar';
 import { Project, Client, Asset, AssetVersion, ReviewSession, ActivityLog, ProjectStatus } from '@/lib/types';
+import { getAmbientBackground, getVideoThumbnail, detectVideoProvider } from '@/lib/theme';
 import { saveCut, saveProject as saveProjectStorage } from '@/lib/storage';
 import {
   getProjectById,
@@ -55,6 +61,9 @@ export default function ProjectDetailPage() {
     currentCompany,
     currentUser,
     companyUsers,
+    companyClients,
+    updateProject,
+    deleteProject,
     canManageProjects,
   } = useAuth();
 
@@ -64,8 +73,20 @@ export default function ProjectDetailPage() {
   const [versions, setVersions] = useState<AssetVersion[]>([]);
   const [sessions, setSessions] = useState<ReviewSession[]>([]);
   const [projectLogs, setProjectLogs] = useState<ActivityLog[]>([]);
-  const [activeTab, setActiveTab] = useState<'assets' | 'sessions' | 'approvals' | 'activity'>('assets');
+  const [activeTab, setActiveTab] = useState<'assets' | 'sessions' | 'approvals' | 'activity' | 'settings'>('assets');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Settings Tab Edit State
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editClientId, setEditClientId] = useState('');
+  const [editFps, setEditFps] = useState(24);
+  const [editColorSpace, setEditColorSpace] = useState('Rec.709');
+  const [editStartTimecode, setEditStartTimecode] = useState('01:00:00:00');
+  const [editDropFrame, setEditDropFrame] = useState(false);
+  const [editThumbnail, setEditThumbnail] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsSavedSuccess, setSettingsSavedSuccess] = useState(false);
 
   // New Cut / Version Modal
   const [isAddAssetModalOpen, setIsAddAssetModalOpen] = useState(false);
@@ -87,22 +108,33 @@ export default function ProjectDetailPage() {
     const proj = await getProjectById(projectId);
     setProject(proj);
 
-    if (proj && proj.companyId) {
-      const clients = await getClientsByCompany(proj.companyId);
-      const matchedClient = clients.find(c => c.id === proj.clientId) || null;
-      setClient(matchedClient);
+    if (proj) {
+      setEditName(proj.name || '');
+      setEditDesc(proj.description || '');
+      setEditClientId(proj.clientId || '');
+      setEditFps(proj.fps || 24);
+      setEditColorSpace(proj.colorSpace || 'Rec.709');
+      setEditStartTimecode(proj.startTimecode || '01:00:00:00');
+      setEditDropFrame(Boolean(proj.dropFrame));
+      setEditThumbnail(proj.thumbnailUrl || proj.coverUrl || '');
 
-      const projAssets = await getAssetsByProject(proj.id);
-      setAssets(projAssets);
+      if (proj.companyId) {
+        const clients = await getClientsByCompany(proj.companyId);
+        const matchedClient = clients.find(c => c.id === proj.clientId) || null;
+        setClient(matchedClient);
 
-      const projVersions = await getAssetVersionsByProject(proj.id);
-      setVersions(projVersions);
+        const projAssets = await getAssetsByProject(proj.id);
+        setAssets(projAssets);
 
-      const projSessions = await getReviewSessionsByProject(proj.id);
-      setSessions(projSessions);
+        const projVersions = await getAssetVersionsByProject(proj.id);
+        setVersions(projVersions);
 
-      const allLogs = await getActivityLogsByCompany(proj.companyId);
-      setProjectLogs(allLogs.filter(l => l.projectId === proj.id));
+        const projSessions = await getReviewSessionsByProject(proj.id);
+        setSessions(projSessions);
+
+        const allLogs = await getActivityLogsByCompany(proj.companyId);
+        setProjectLogs(allLogs.filter(l => l.projectId === proj.id));
+      }
     }
     setIsLoading(false);
   };
@@ -113,92 +145,110 @@ export default function ProjectDetailPage() {
 
   const handleStatusChange = async (newStatus: ProjectStatus) => {
     if (!project) return;
-    const updated: Project = {
-      ...project,
-      status: newStatus,
-      updatedAt: new Date().toISOString(),
-    };
-    await saveProject(updated);
-    setProject(updated);
+    await updateProject(project.id, { status: newStatus });
+    setProject(prev => prev ? { ...prev, status: newStatus } : null);
+  };
 
-    if (currentUser) {
-      await logActivity({
-        companyId: project.companyId,
-        projectId: project.id,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userRole: currentUser.role,
-        action: 'Status Updated',
-        details: `Changed project status to "${newStatus}"`,
-      });
-      await loadProjectData();
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!project || !editName.trim()) return;
+    setIsSavingSettings(true);
+
+    const matchedClient = companyClients.find(c => c.id === editClientId);
+
+    const updatedData: Partial<Project> = {
+      name: editName.trim(),
+      description: editDesc.trim() || undefined,
+      clientId: editClientId || undefined,
+      fps: Number(editFps) || 24,
+      colorSpace: editColorSpace || 'Rec.709',
+      startTimecode: editStartTimecode.trim() || '01:00:00:00',
+      dropFrame: editDropFrame,
+      thumbnailUrl: editThumbnail.trim() || undefined,
+      primaryColor: matchedClient?.accentColor || project.primaryColor,
+    };
+
+    await updateProject(project.id, updatedData);
+    setIsSavingSettings(false);
+    setSettingsSavedSuccess(true);
+    setTimeout(() => setSettingsSavedSuccess(false), 3000);
+    await loadProjectData();
+  };
+
+  const handleThumbnailUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setEditThumbnail(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleCreateCut = async (e: React.FormEvent) => {
+  const handleAddMediaCut = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !newCutName.trim()) return;
+    if (!project || !currentCompany) return;
 
-    // 1. Ensure project exists in Screener storage
-    await saveProjectStorage({
-      id: project.id,
-      name: project.name,
-      fps: project.fps,
-      dropFrame: project.dropFrame,
-      startTimecode: project.startTimecode,
-      createdAt: project.createdAt,
-    });
+    let targetAsset = assets[0];
+    if (!targetAsset) {
+      targetAsset = {
+        id: `asset_${Date.now()}`,
+        projectId: project.id,
+        companyId: currentCompany.id,
+        name: 'Master Video Sequence',
+        type: 'video',
+        createdAt: new Date().toISOString(),
+      };
+      await saveAsset(targetAsset);
+      setAssets([targetAsset]);
+    }
 
-    // 2. Create parent asset container
-    const assetId = `asset_${Date.now()}`;
-    const newAsset: Asset = {
-      id: assetId,
+    const detectedProv = detectVideoProvider(newCutUrl);
+    const cutThumb = getVideoThumbnail(newCutUrl, project.thumbnailUrl);
+
+    const newVersionObj: AssetVersion = {
+      id: `ver_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      assetId: targetAsset.id,
       projectId: project.id,
-      companyId: project.companyId,
-      name: newCutName.trim(),
-      type: 'video',
-      createdAt: new Date().toISOString(),
-    };
-    await saveAsset(newAsset);
-
-    // 3. Create version v1/v2
-    const cutId = `cut_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const newVersion: AssetVersion = {
-      id: cutId,
-      assetId,
-      projectId: project.id,
-      companyId: project.companyId,
-      versionNumber: Number(newCutVersion) || 1,
-      name: `v${newCutVersion} — ${newCutName.trim()}`,
-      provider: newCutProvider,
-      videoUrl: newCutUrl.trim(),
+      companyId: currentCompany.id,
+      versionNumber: newCutVersion,
+      name: newCutName,
+      provider: detectedProv,
+      videoUrl: newCutUrl,
+      thumbnailUrl: cutThumb,
       durationSeconds: 120,
-      uploadedByUserId: currentUser?.id || 'user_admin',
+      uploadedByUserId: currentUser?.id || 'user_1',
       uploadedByUserName: currentUser?.name || 'Studio Member',
       createdAt: new Date().toISOString(),
     };
-    await saveAssetVersion(newVersion);
 
-    // 4. Save to Screener Cuts DB so it is instantly playable in Screener Studio
-    await saveCut({
-      id: cutId,
-      projectId: project.id,
-      name: newVersion.name,
-      provider: newCutProvider,
-      videoUrl: newCutUrl.trim(),
-      durationSeconds: 120,
-      createdAt: new Date().toISOString(),
-    });
+    await saveAssetVersion(newVersionObj);
+
+    // Sync with screener storage
+    try {
+      await saveCut({
+        id: newVersionObj.id,
+        projectId: project.id,
+        name: `${project.name} — ${newCutName} (v${newCutVersion})`,
+        videoUrl: newCutUrl,
+        provider: detectedProv === 'youtube' ? 'youtube' : detectedProv === 'vimeo' ? 'vimeo' : 'local',
+        durationSeconds: 120,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn('Storage sync:', err);
+    }
 
     if (currentUser) {
       await logActivity({
-        companyId: project.companyId,
+        companyId: currentCompany.id,
         projectId: project.id,
         userId: currentUser.id,
         userName: currentUser.name,
         userRole: currentUser.role,
-        action: 'Uploaded New Cut',
-        details: `Added ${newVersion.name} (${newCutProvider})`,
+        action: 'Uploaded Media Cut',
+        details: `Added ${newCutName} (v${newCutVersion}) [${detectedProv.toUpperCase()}]`,
       });
     }
 
@@ -208,15 +258,15 @@ export default function ProjectDetailPage() {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!project || !newSessionTitle.trim()) return;
+    if (!project || !currentCompany) return;
 
     const newSession: ReviewSession = {
-      id: `session_${Date.now()}`,
+      id: `session_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       projectId: project.id,
-      companyId: project.companyId,
-      title: newSessionTitle.trim(),
+      companyId: currentCompany.id,
+      title: newSessionTitle,
       status: 'active',
-      playlistAssetIds: versions.map(v => v.id),
+      playlistAssetIds: assets.map(a => a.id),
       hostUserId: currentUser?.id,
       allowClientDraw: sessionAllowDraw,
       allowClientGrade: sessionAllowGrade,
@@ -224,17 +274,18 @@ export default function ProjectDetailPage() {
       allowClientExport: true,
       createdAt: new Date().toISOString(),
     };
+
     await saveReviewSession(newSession);
 
     if (currentUser) {
       await logActivity({
-        companyId: project.companyId,
+        companyId: currentCompany.id,
         projectId: project.id,
         userId: currentUser.id,
         userName: currentUser.name,
         userRole: currentUser.role,
         action: 'Created Review Session',
-        details: `Initiated "${newSession.title}" with ${newSession.playlistAssetIds.length} playlist cuts`,
+        details: `Created review playlist "${newSessionTitle}"`,
       });
     }
 
@@ -261,7 +312,7 @@ export default function ProjectDetailPage() {
 
   if (isLoading || !project) {
     return (
-      <div className="min-h-screen bg-[#090c13] text-slate-100 flex flex-col">
+      <div className="min-h-screen bg-[#06080d] text-slate-100 flex flex-col">
         <AppNavbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="flex items-center gap-3 text-slate-400">
@@ -278,7 +329,7 @@ export default function ProjectDetailPage() {
 
   if (isUnauthorized) {
     return (
-      <div className="min-h-screen bg-[#090c13] text-slate-100 flex flex-col">
+      <div className="min-h-screen bg-[#06080d] text-slate-100 flex flex-col">
         <AppNavbar />
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-md mx-auto">
           <div className="w-12 h-12 rounded-2xl bg-red-950/40 border border-red-500/40 flex items-center justify-center text-red-400">
@@ -299,359 +350,671 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const clientAccent = client?.accentColor || project.primaryColor || '#6366f1';
+  const thumbnail = project.thumbnailUrl || project.coverUrl;
+
   return (
-    <div className="min-h-screen bg-[#090c13] text-slate-100 flex flex-col select-none">
+    <div
+      style={{
+        background: getAmbientBackground(clientAccent),
+      }}
+      className="min-h-screen text-slate-100 flex flex-col select-none font-sans transition-all duration-700 relative overflow-x-hidden"
+    >
+      {/* Ambient Top Glow Mesh */}
+      <div
+        style={{
+          background: `radial-gradient(ellipse 80% 50% at 50% -20%, ${clientAccent}28 0%, transparent 70%)`,
+        }}
+        className="pointer-events-none fixed inset-0 z-0 opacity-80"
+      />
+
       <AppNavbar />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Breadcrumb & Navigation */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-7 relative z-10">
+        {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          <Link href="/projects" className="hover:text-white flex items-center gap-1">
+          <Link href="/projects" className="hover:text-white flex items-center gap-1 transition">
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Projects</span>
           </Link>
           <span>/</span>
+          {client && (
+            <>
+              <Link href={`/clients`} style={{ color: clientAccent }} className="hover:underline font-medium">
+                {client.name}
+              </Link>
+              <span>/</span>
+            </>
+          )}
           <span className="text-slate-200 font-bold truncate">{project.name}</span>
         </div>
 
-        {/* Project Header Banner */}
-        <div className="bg-[#111724] border border-[#20293d] p-5 sm:p-6 rounded-3xl shadow-2xl relative overflow-hidden space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="space-y-1.5 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                {getStatusBadge(project.status)}
-                {client && (
-                  <span className="flex items-center gap-1 text-xs font-semibold text-slate-300 px-2.5 py-0.5 rounded-full bg-[#182133] border border-[#243048]">
-                    <Building2 className="w-3.5 h-3.5 text-blue-400" />
-                    <span>{client.name}</span>
+        {/* ---------------------------------------------------- */}
+        {/* CINEMATIC PROJECT HEADER WITH DYNAMIC CLIENT THEMING */}
+        {/* ---------------------------------------------------- */}
+        <div
+          style={{ borderColor: `${clientAccent}33` }}
+          className="bg-[#0b0f19] border rounded-3xl shadow-2xl relative overflow-hidden space-y-5 group"
+        >
+          {/* Top Dynamic Client Accent Bar */}
+          <div
+            style={{ backgroundColor: clientAccent }}
+            className="absolute top-0 left-0 right-0 h-1.5 opacity-80"
+          />
+
+          {/* Optional Thumbnail Hero Backdrop */}
+          {thumbnail && (
+            <div className="absolute inset-0 z-0 opacity-15 overflow-hidden pointer-events-none">
+              <img src={thumbnail} alt="" className="w-full h-full object-cover blur-sm" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0b0f19] via-[#0b0f19]/80 to-transparent" />
+            </div>
+          )}
+
+          <div className="p-6 sm:p-7 relative z-10 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-2 min-w-0">
+                {/* Meta Badges */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {getStatusBadge(project.status)}
+
+                  {client && (
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#121927] border border-[#212c42]">
+                      {client.logoUrl ? (
+                        <img src={client.logoUrl} alt={client.name} className="w-4 h-4 rounded-full object-cover" />
+                      ) : (
+                        <span
+                          style={{ backgroundColor: clientAccent }}
+                          className="w-2.5 h-2.5 rounded-full"
+                        />
+                      )}
+                      <span className="text-xs font-bold text-white">{client.name}</span>
+                    </div>
+                  )}
+
+                  <span className="font-mono text-xs font-bold text-slate-300 px-2.5 py-0.5 rounded-full bg-[#121927] border border-[#212c42]">
+                    {project.fps} FPS
                   </span>
+
+                  {project.colorSpace && (
+                    <span className="font-mono text-xs text-slate-300 px-2.5 py-0.5 rounded-full bg-[#121927] border border-[#212c42]">
+                      {project.colorSpace}
+                    </span>
+                  )}
+
+                  <span className="font-mono text-xs text-slate-400 px-2.5 py-0.5 rounded-full bg-[#070a10]">
+                    TC: {project.startTimecode}
+                  </span>
+                </div>
+
+                {/* Project Title */}
+                <h1 className="text-2xl sm:text-3xl font-serif font-normal text-white leading-tight">
+                  {project.name}
+                </h1>
+
+                {project.description && (
+                  <p className="text-xs sm:text-sm text-slate-400 max-w-3xl leading-relaxed">
+                    {project.description}
+                  </p>
                 )}
-                <span className="font-mono text-xs font-bold text-blue-400 px-2 py-0.5 rounded bg-[#090d14] border border-[#1e273b]">
-                  {project.fps} FPS
-                </span>
-                <span className="font-mono text-xs text-slate-400 px-2 py-0.5 rounded bg-[#090d14]">
-                  TC: {project.startTimecode}
-                </span>
               </div>
 
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white leading-tight">
-                {project.name}
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-400 max-w-3xl">
-                {project.description || 'Comprehensive multi-version media review and client sign-off hub.'}
-              </p>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2.5 shrink-0">
+                {canManageProjects && (
+                  <select
+                    value={project.status}
+                    onChange={e => handleStatusChange(e.target.value as ProjectStatus)}
+                    className="px-3.5 py-2.5 rounded-full bg-[#121927] border border-[#212c42] text-xs font-semibold text-white focus:outline-none focus:border-white transition"
+                  >
+                    <option value="draft">Status: Draft</option>
+                    <option value="internal_review">Status: Internal Review</option>
+                    <option value="client_review">Status: Client Review</option>
+                    <option value="changes_requested">Status: Changes Requested</option>
+                    <option value="approved">Status: Approved</option>
+                    <option value="delivered">Status: Delivered</option>
+                  </select>
+                )}
+
+                <Link
+                  href={`/screener?projectId=${project.id}`}
+                  style={{ backgroundColor: clientAccent }}
+                  className="px-5 py-2.5 rounded-full text-white text-xs font-bold flex items-center gap-2 shadow-xl hover:brightness-110 transition active:scale-95"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Launch Screener</span>
+                </Link>
+              </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex items-center gap-2.5 shrink-0">
-              {canManageProjects && (
-                <select
-                  value={project.status}
-                  onChange={e => handleStatusChange(e.target.value as ProjectStatus)}
-                  className="px-3 py-2 rounded-xl bg-[#182133] border border-[#26334d] text-xs font-bold text-slate-200 focus:outline-none focus:border-blue-500"
-                >
-                  <option value="draft">Set: Draft</option>
-                  <option value="internal_review">Set: Internal Review</option>
-                  <option value="client_review">Set: Client Review</option>
-                  <option value="changes_requested">Set: Changes Requested</option>
-                  <option value="approved">Set: Approved</option>
-                  <option value="delivered">Set: Delivered</option>
-                </select>
-              )}
-
-              <Link
-                href={`/screener?projectId=${project.id}`}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-900/40 active:scale-95 transition"
+            {/* Hub Navigation Tabs */}
+            <div className="flex items-center gap-1 border-t border-[#182133] pt-4 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setActiveTab('assets')}
+                className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition whitespace-nowrap ${
+                  activeTab === 'assets'
+                    ? 'bg-white text-black shadow'
+                    : 'text-slate-400 hover:text-white hover:bg-[#121927]'
+                }`}
               >
-                <Tv className="w-4 h-4" />
-                <span>Launch Screener Studio</span>
-              </Link>
+                <Film className="w-3.5 h-3.5" />
+                <span>Media Lineage ({versions.length} Cuts)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('sessions')}
+                className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition whitespace-nowrap ${
+                  activeTab === 'sessions'
+                    ? 'bg-white text-black shadow'
+                    : 'text-slate-400 hover:text-white hover:bg-[#121927]'
+                }`}
+              >
+                <Tv className="w-3.5 h-3.5" />
+                <span>Review Playlists ({sessions.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('approvals')}
+                className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition whitespace-nowrap ${
+                  activeTab === 'approvals'
+                    ? 'bg-white text-black shadow'
+                    : 'text-slate-400 hover:text-white hover:bg-[#121927]'
+                }`}
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>Approval Pipeline</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('activity')}
+                className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition whitespace-nowrap ${
+                  activeTab === 'activity'
+                    ? 'bg-white text-black shadow'
+                    : 'text-slate-400 hover:text-white hover:bg-[#121927]'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Activity Log ({projectLogs.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition whitespace-nowrap ${
+                  activeTab === 'settings'
+                    ? 'bg-white text-black shadow'
+                    : 'text-slate-400 hover:text-white hover:bg-[#121927]'
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Project Settings</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 border-b border-[#1c2438] pb-1 overflow-x-auto">
-          {[
-            { id: 'assets', label: 'Media Library & Versions', icon: Film, count: versions.length },
-            { id: 'sessions', label: 'Review Sessions & Playlists', icon: Tv, count: sessions.length },
-            { id: 'approvals', label: 'Approvals & Sign-Off', icon: CheckSquare },
-            { id: 'activity', label: 'Activity Trail', icon: Clock, count: projectLogs.length },
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                  isActive
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-[#111724]'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-                {tab.count !== undefined && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-[#182133] text-[10px] font-mono font-bold">
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* TAB 1: Media Library & Version Lineage */}
+        {/* ---------------------------------------------------- */}
+        {/* TAB 1: MEDIA CUTS & VERSION LINEAGE */}
+        {/* ---------------------------------------------------- */}
         {activeTab === 'assets' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0b0f19]/80 border border-[#1b2538] p-5 rounded-3xl backdrop-blur-md">
               <div>
-                <h2 className="text-base font-bold text-white">Project Media Cuts & Version Lineage</h2>
-                <p className="text-xs text-slate-400">Manage review cuts, compare passes, and version progressions.</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono uppercase tracking-wider text-slate-400">Media Asset Center</span>
+                  <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-bold">
+                    {versions.length} Active Stream Cuts
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white mt-0.5">Project Video Cuts & Asset Repository</h3>
+                <p className="text-xs text-slate-400">
+                  Direct external streams from YouTube, Vimeo, Instagram Reels, and ProRes masters with frame-accurate timecodes.
+                </p>
               </div>
-
-              {canManageProjects && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddAssetModalOpen(true)}
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition active:scale-95"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Upload / Add Media Cut</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsAddAssetModalOpen(true)}
+                className="px-5 py-2.5 rounded-full bg-white hover:bg-slate-200 text-black text-xs font-bold flex items-center gap-2 transition shadow-xl shrink-0 active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Media Stream Link</span>
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {versions.length === 0 ? (
-                <div className="col-span-full py-16 text-center text-slate-500 space-y-2 bg-[#111724] border border-[#20293d] rounded-2xl p-6">
-                  <Film className="w-10 h-10 mx-auto opacity-30 text-blue-400" />
-                  <p className="text-sm font-semibold">No media cuts uploaded yet</p>
-                  <p className="text-xs text-slate-500">Add YouTube, Vimeo, or MP4 video cuts to start reviewing.</p>
+                <div className="col-span-full py-16 text-center text-slate-500 space-y-3 bg-[#0b0f19] rounded-3xl border border-[#182133]">
+                  <Film className="w-12 h-12 mx-auto opacity-30 text-slate-400" />
+                  <p className="text-sm font-semibold text-white">No media cuts attached to this project</p>
+                  <p className="text-xs text-slate-400">Add your first YouTube, Vimeo, Instagram, or direct video cut.</p>
                 </div>
               ) : (
-                versions.map(ver => (
-                  <div
-                    key={ver.id}
-                    className="p-4 rounded-2xl bg-[#111724] border border-[#20293d] hover:border-blue-500/50 transition group flex flex-col justify-between gap-3 shadow-xl"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 text-xs font-mono font-bold">
-                          v{ver.versionNumber}
-                        </span>
-                        <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 py-0.5 rounded bg-[#090d14]">
-                          {ver.provider}
-                        </span>
+                versions.map(ver => {
+                  const cutThumb = ver.thumbnailUrl || getVideoThumbnail(ver.videoUrl, project.thumbnailUrl);
+                  const provider = ver.provider || detectVideoProvider(ver.videoUrl);
+
+                  const getProviderBadge = () => {
+                    switch (provider) {
+                      case 'youtube':
+                        return <span className="px-2.5 py-0.5 rounded-full bg-red-600/20 border border-red-500/40 text-red-300 text-[10px] font-bold flex items-center gap-1">YouTube 4K</span>;
+                      case 'vimeo':
+                        return <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-[10px] font-bold flex items-center gap-1">Vimeo Pro</span>;
+                      case 'instagram':
+                        return <span className="px-2.5 py-0.5 rounded-full bg-pink-500/20 border border-pink-500/40 text-pink-300 text-[10px] font-bold flex items-center gap-1">Instagram Reel</span>;
+                      case 'tiktok':
+                        return <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold flex items-center gap-1">TikTok Stream</span>;
+                      default:
+                        return <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-[10px] font-bold flex items-center gap-1">Direct Master</span>;
+                    }
+                  };
+
+                  return (
+                    <div
+                      key={ver.id}
+                      className="rounded-3xl bg-[#0b0f19]/90 border border-[#1b2538] hover:border-[#2f3f5c] transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-xl group"
+                    >
+                      {/* Video Thumbnail Viewport */}
+                      <div className="relative aspect-video w-full bg-[#06080d] overflow-hidden">
+                        <img
+                          src={cutThumb}
+                          alt={ver.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0f19] via-transparent to-black/60" />
+
+                        {/* Top Badges */}
+                        <div className="absolute top-3 left-3 flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-xl bg-black/80 backdrop-blur-md border border-white/20 flex items-center justify-center font-mono font-black text-white text-[11px] shadow">
+                            v{ver.versionNumber}
+                          </div>
+                          {getProviderBadge()}
+                        </div>
+
+                        {/* Duration Chip */}
+                        <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-slate-300">
+                          {project.fps} FPS • {project.colorSpace || 'Rec.709'}
+                        </div>
+
+                        {/* Center Hover Play Button */}
+                        <Link
+                          href={`/screener?projectId=${project.id}&cutId=${ver.id}`}
+                          className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                          title="Open in Screener"
+                        >
+                          <div
+                            style={{ backgroundColor: clientAccent }}
+                            className="w-12 h-12 rounded-full text-white flex items-center justify-center shadow-2xl transition hover:scale-110 hover:brightness-110"
+                          >
+                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                          </div>
+                        </Link>
                       </div>
 
-                      <h3 className="text-sm font-bold text-white group-hover:text-blue-400 transition leading-snug">
-                        {ver.name}
-                      </h3>
-                      <span className="text-[11px] text-slate-400 block mt-1">
-                        By: <span className="text-slate-300 font-semibold">{ver.uploadedByUserName}</span>
-                      </span>
-                    </div>
+                      {/* Card Content */}
+                      <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-white group-hover:text-slate-200 transition line-clamp-1">
+                            {ver.name}
+                          </h4>
+                          <span className="text-[11px] text-slate-400 block truncate">
+                            By {ver.uploadedByUserName} • {new Date(ver.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
 
-                    <div className="pt-3 border-t border-[#1d2538] flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {new Date(ver.createdAt).toLocaleDateString()}
-                      </span>
+                        <div className="pt-3 border-t border-[#182133] flex items-center justify-between gap-2">
+                          {ver.videoUrl && (
+                            <a
+                              href={ver.videoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Stream Source</span>
+                            </a>
+                          )}
 
-                      <Link
-                        href={`/screener?projectId=${project.id}&cutId=${ver.id}`}
-                        className="px-3 py-1.5 rounded-xl bg-[#182133] hover:bg-blue-600 hover:text-white text-blue-400 text-xs font-bold flex items-center gap-1 transition"
-                      >
-                        <Play className="w-3 h-3 fill-current" />
-                        <span>Launch Review</span>
-                      </Link>
+                          <Link
+                            href={`/screener?projectId=${project.id}&cutId=${ver.id}`}
+                            style={{ backgroundColor: `${clientAccent}22`, color: clientAccent, borderColor: `${clientAccent}55` }}
+                            className="px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition border hover:brightness-125"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>Review Cut</span>
+                          </Link>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 2: Review Sessions & Playlists */}
+        {/* ---------------------------------------------------- */}
+        {/* TAB 2: REVIEW PLAYLISTS & SESSIONS */}
+        {/* ---------------------------------------------------- */}
         {activeTab === 'sessions' && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-white">Synchronized Review Sessions</h2>
-                <p className="text-xs text-slate-400">Interactive live screeners and multi-cut playlist sessions.</p>
+                <h3 className="text-sm font-bold text-white">Client Review Playlists</h3>
+                <p className="text-xs text-slate-400">Passwordless magic links dispatched to clients for synchronized review.</p>
               </div>
-
-              {canManageProjects && (
-                <button
-                  type="button"
-                  onClick={() => setIsNewSessionModalOpen(true)}
-                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition active:scale-95"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Create Review Session</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsNewSessionModalOpen(true)}
+                className="px-4 py-2 rounded-full bg-white hover:bg-slate-200 text-black text-xs font-bold flex items-center gap-1.5 transition shadow"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create Review Link</span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {sessions.length === 0 ? (
-                <div className="col-span-full py-16 text-center text-slate-500 space-y-2 bg-[#111724] border border-[#20293d] rounded-2xl p-6">
-                  <Tv className="w-10 h-10 mx-auto opacity-30 text-purple-400" />
-                  <p className="text-sm font-semibold">No active review sessions</p>
-                  <p className="text-xs text-slate-500">Create a session to invite clients with passwordless review links.</p>
+                <div className="col-span-full py-16 text-center text-slate-500 space-y-3 bg-[#0b0f19] rounded-3xl border border-[#182133]">
+                  <Tv className="w-10 h-10 mx-auto opacity-30 text-slate-400" />
+                  <p className="text-sm font-semibold text-white">No active review sessions</p>
+                  <p className="text-xs text-slate-400">Create a review session to generate a secure client magic link.</p>
                 </div>
               ) : (
-                sessions.map(sess => (
-                  <div
-                    key={sess.id}
-                    className="p-5 rounded-2xl bg-[#111724] border border-[#20293d] hover:border-purple-500/50 transition group flex flex-col justify-between gap-4 shadow-xl"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                          Active Session
-                        </span>
-                        <span className="text-xs font-mono font-bold text-purple-400">
-                          {sess.playlistAssetIds.length} Cuts in Playlist
-                        </span>
+                sessions.map(session => {
+                  const magicReviewUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/review/${session.id}`;
+                  const isCopied = sessionCopiedId === session.id;
+
+                  return (
+                    <div
+                      key={session.id}
+                      className="p-5 rounded-3xl bg-[#0b0f19] border border-[#1b2538] space-y-4 shadow-xl"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold text-white">{session.title}</h4>
+                          <span className="text-[10px] text-emerald-400 font-mono font-bold">● Active Magic Link</span>
+                        </div>
+                        <Link
+                          href={`/review/${session.id}`}
+                          target="_blank"
+                          className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                        >
+                          <span>Open</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
                       </div>
 
-                      <h3 className="text-base font-bold text-white group-hover:text-purple-300 transition">
-                        {sess.title}
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Draw Permissions: {sess.allowClientDraw ? 'Enabled' : 'Disabled'} • Grade Permissions: {sess.allowClientGrade ? 'Enabled' : 'Disabled'}
-                      </p>
+                      <div className="flex items-center gap-2 p-2 rounded-xl bg-[#06080d] border border-[#182133]">
+                        <input
+                          type="text"
+                          readOnly
+                          value={magicReviewUrl}
+                          className="flex-1 bg-transparent text-[11px] font-mono text-slate-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(magicReviewUrl);
+                            setSessionCopiedId(session.id);
+                            setTimeout(() => setSessionCopiedId(null), 2500);
+                          }}
+                          className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold flex items-center gap-1 transition shrink-0"
+                        >
+                          {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          <span>{isCopied ? 'Copied' : 'Copy Link'}</span>
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="pt-3 border-t border-[#1d2538] flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = `${window.location.origin}/review/demo_token_${sess.id}`;
-                          navigator.clipboard.writeText(url);
-                          setSessionCopiedId(sess.id);
-                          setTimeout(() => setSessionCopiedId(null), 2500);
-                        }}
-                        className="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 p-1.5 rounded-lg hover:bg-[#182133] transition"
-                      >
-                        {sessionCopiedId === sess.id ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span className="text-emerald-400">Copied Magic Link!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Share2 className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Copy Client Link</span>
-                          </>
-                        )}
-                      </button>
-
-                      <Link
-                        href="/"
-                        className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition"
-                      >
-                        <Play className="w-3 h-3 fill-current" />
-                        <span>Join Session</span>
-                      </Link>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: Approval Gates & Sign-Off */}
+        {/* ---------------------------------------------------- */}
+        {/* TAB 3: APPROVAL GATES */}
+        {/* ---------------------------------------------------- */}
         {activeTab === 'approvals' && (
-          <div className="space-y-6 bg-[#111724] border border-[#20293d] p-6 rounded-2xl shadow-xl">
-            <div>
-              <h2 className="text-base font-bold text-white">Production Sign-Off & Approval Gates</h2>
-              <p className="text-xs text-slate-400">Traceable decision points from initial ingest to final client sign-off.</p>
-            </div>
-
+          <div className="p-6 rounded-3xl bg-[#0b0f19] border border-[#1b2538] space-y-5">
+            <h3 className="text-sm font-bold text-white">5-Stage Production Sign-Off Gates</h3>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               {[
-                { stage: '1. Ingest & Sync', done: true, desc: 'Media linked & timecode locked' },
-                { stage: '2. Internal Review', done: project.status !== 'draft', desc: 'Creative editor approval' },
-                { stage: '3. Client Screener', done: project.status === 'client_review' || project.status === 'approved' || project.status === 'delivered', desc: 'Magic screener link active' },
-                { stage: '4. Revisions & Fixes', done: project.status === 'changes_requested', desc: 'Notes and markups resolved' },
-                { stage: '5. Final Approval', done: project.status === 'approved' || project.status === 'delivered', desc: 'Client sign-off complete' },
-              ].map((step, idx) => (
+                { label: '1. Ingest & Sync', done: true },
+                { label: '2. Picture Lock', done: project.status !== 'draft' },
+                { label: '3. Color & Audio Mix', done: project.status === 'client_review' || project.status === 'approved' || project.status === 'delivered' },
+                { label: '4. Executive Sign-Off', done: project.status === 'approved' || project.status === 'delivered' },
+                { label: '5. Master Delivered', done: project.status === 'delivered' },
+              ].map((gate, idx) => (
                 <div
-                  key={step.stage}
-                  className={`p-4 rounded-xl border flex flex-col justify-between gap-3 ${
-                    step.done
-                      ? 'bg-blue-600/10 border-blue-500/40 text-white'
-                      : 'bg-[#0d121c] border-[#1e273b] text-slate-500'
+                  key={gate.label}
+                  className={`p-4 rounded-2xl border text-center space-y-2 ${
+                    gate.done
+                      ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-300'
+                      : 'bg-[#06080d] border-[#182133] text-slate-500'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Gate {idx + 1}</span>
-                      {step.done ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <Clock className="w-4 h-4 text-slate-600" />
-                      )}
-                    </div>
-                    <h4 className="text-xs font-bold mb-1">{step.stage}</h4>
-                    <p className="text-[11px] text-slate-400 leading-snug">{step.desc}</p>
-                  </div>
+                  <CheckCircle2 className={`w-5 h-5 mx-auto ${gate.done ? 'text-emerald-400' : 'text-slate-600'}`} />
+                  <span className="text-xs font-bold block">{gate.label}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* TAB 4: Activity Trail */}
+        {/* ---------------------------------------------------- */}
+        {/* TAB 4: ACTIVITY LOG */}
+        {/* ---------------------------------------------------- */}
         {activeTab === 'activity' && (
-          <div className="space-y-4 bg-[#111724] border border-[#20293d] p-6 rounded-2xl shadow-xl">
-            <h2 className="text-base font-bold text-white">Project Activity & Decision Log</h2>
+          <div className="p-6 rounded-3xl bg-[#0b0f19] border border-[#1b2538] space-y-4">
+            <h3 className="text-sm font-bold text-white">Audit Trail & Activity Log</h3>
             <div className="space-y-3">
               {projectLogs.length === 0 ? (
-                <p className="text-xs text-slate-500 py-6 text-center">No activity recorded for this project yet.</p>
+                <p className="text-xs text-slate-500">No activity recorded for this project yet.</p>
               ) : (
                 projectLogs.map(log => (
-                  <div key={log.id} className="p-3 rounded-xl bg-[#141b29] border border-[#1e273b] flex items-center justify-between gap-4">
+                  <div key={log.id} className="p-3.5 rounded-2xl bg-[#06080d] border border-[#182133] flex items-center justify-between text-xs">
                     <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-xs font-bold text-white">{log.userName}</span>
-                        <span className="text-[10px] text-slate-500">({log.userRole})</span>
-                        <span className="text-xs font-semibold text-blue-400">• {log.action}</span>
-                      </div>
-                      <p className="text-xs text-slate-400">{log.details}</p>
+                      <span className="font-bold text-white">{log.action}</span>
+                      <span className="text-slate-400 block text-[11px]">{log.details}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-slate-500 shrink-0">
-                      {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">{new Date(log.createdAt).toLocaleTimeString()}</span>
                   </div>
                 ))
               )}
             </div>
           </div>
         )}
+
+        {/* ---------------------------------------------------- */}
+        {/* TAB 5: PROJECT SETTINGS & TECHNICAL SPECIFICATIONS */}
+        {/* ---------------------------------------------------- */}
+        {activeTab === 'settings' && (
+          <div className="p-6 sm:p-7 rounded-3xl bg-[#0b0f19] border border-[#1b2538] space-y-6">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-blue-400" />
+                <span>Project Specifications & Metadata</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Manage technical timeline parameters, timecode math, color space target, and client assignment.
+              </p>
+            </div>
+
+            {settingsSavedSuccess && (
+              <div className="p-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Project specifications updated successfully!</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSettings} className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Name */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Project Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white transition"
+                  />
+                </div>
+
+                {/* Client Link */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Linked Client Account</label>
+                  <select
+                    value={editClientId}
+                    onChange={e => setEditClientId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white transition"
+                  >
+                    <option value="">No Client (Internal)</option>
+                    {companyClients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.companyName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Color Space */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Target Color Space</label>
+                  <select
+                    value={editColorSpace}
+                    onChange={e => setEditColorSpace(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white transition"
+                  >
+                    <option value="Rec.709">Rec.709 (HD / SDR Standard)</option>
+                    <option value="DCI-P3">DCI-P3 (Theatrical Cinema / Apple P3)</option>
+                    <option value="Rec.2020">Rec.2020 (UHD / HDR Master)</option>
+                    <option value="ACEScg">ACEScg (Academy VFX Color Encoding)</option>
+                    <option value="sRGB">sRGB (Web Standard)</option>
+                  </select>
+                </div>
+
+                {/* FPS */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Timecode Base (FPS)</label>
+                  <select
+                    value={editFps}
+                    onChange={e => setEditFps(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white font-mono transition"
+                  >
+                    <option value={23.976}>23.976 fps (NTSC Film)</option>
+                    <option value={24}>24.000 fps (Cinema Master)</option>
+                    <option value={25}>25.000 fps (PAL / Commercial)</option>
+                    <option value={29.97}>29.970 fps (Broadcast NTSC)</option>
+                    <option value={30}>30.000 fps (Digital Video)</option>
+                    <option value={60}>60.000 fps (Gaming / Web HFR)</option>
+                  </select>
+                </div>
+
+                {/* Start Timecode */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Start Timecode (SMPTE)</label>
+                  <input
+                    type="text"
+                    value={editStartTimecode}
+                    onChange={e => setEditStartTimecode(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white font-mono transition"
+                  />
+                </div>
+              </div>
+
+              {/* Thumbnail URL & Upload */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-300">Project Thumbnail Image</label>
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <input
+                    type="url"
+                    value={editThumbnail}
+                    onChange={e => setEditThumbnail(e.target.value)}
+                    placeholder="Paste Thumbnail Image URL (e.g. https://...)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white font-mono transition"
+                  />
+                  <label className="cursor-pointer shrink-0 w-full sm:w-auto">
+                    <div className="px-4 py-2.5 rounded-xl border border-[#232f48] bg-[#121927] hover:bg-[#182235] text-xs font-semibold text-slate-200 flex items-center justify-center gap-2 transition">
+                      <Upload className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Upload</span>
+                    </div>
+                    <input type="file" accept="image/*" onChange={handleThumbnailUpload} className="hidden" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Project Scope / Description</label>
+                <textarea
+                  rows={2}
+                  value={editDesc}
+                  onChange={e => setEditDesc(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white resize-none transition"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-[#182133]">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (confirm(`Are you sure you want to permanently delete "${project.name}"?`)) {
+                      await deleteProject(project.id);
+                      router.push('/projects');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-full bg-red-950/30 hover:bg-red-950/60 border border-red-500/30 text-red-400 text-xs font-bold flex items-center gap-1.5 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Project</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingSettings}
+                  className="px-6 py-2.5 rounded-full bg-white hover:bg-slate-200 text-black text-xs font-bold shadow-xl transition active:scale-95 flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{isSavingSettings ? 'Saving...' : 'Save Specifications'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </main>
 
-      {/* Add Cut Modal */}
+      {/* ---------------------------------------------------- */}
+      {/* ADD MEDIA CUT MODAL */}
+      {/* ---------------------------------------------------- */}
       {isAddAssetModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95">
-            <h3 className="text-base font-bold text-white mb-1">Add New Media Cut / Version</h3>
-            <p className="text-xs text-slate-400 mb-4">Upload or link a video version to {project.name}.</p>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#0b0f19] border border-[#232f48] rounded-3xl shadow-2xl p-6 sm:p-7 relative animate-in fade-in zoom-in-95 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">Add New Media Cut / Version</h3>
+              <button
+                type="button"
+                onClick={() => setIsAddAssetModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleCreateCut} className="space-y-4">
+            <form onSubmit={handleAddMediaCut} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Cut Label / Name</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Cut / Sequence Name</label>
                 <input
                   type="text"
                   required
                   value={newCutName}
                   onChange={e => setNewCutName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#090d14] border border-[#232d44] text-xs text-white focus:outline-none focus:border-blue-500"
+                  placeholder="e.g. Cut 3 — Social Media Edit / Color Grade Master"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white"
                 />
               </div>
 
@@ -663,49 +1026,63 @@ export default function ProjectDetailPage() {
                     min={1}
                     value={newCutVersion}
                     onChange={e => setNewCutVersion(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-[#090d14] border border-[#232d44] text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white font-mono"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Provider Type</label>
-                  <select
-                    value={newCutProvider}
-                    onChange={e => setNewCutProvider(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#090d14] border border-[#232d44] text-xs text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="youtube">YouTube URL</option>
-                    <option value="vimeo">Vimeo URL</option>
-                    <option value="local">Local MP4 / Cloud File</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Detected Provider</label>
+                  <div className="px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs font-bold text-slate-200 capitalize flex items-center justify-between">
+                    <span>{detectVideoProvider(newCutUrl)}</span>
+                    <span className="text-[10px] font-mono text-slate-400">Auto-detected</span>
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Video Stream URL</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">External Video Stream Link</label>
                 <input
-                  type="text"
+                  type="url"
                   required
-                  placeholder="https://..."
                   value={newCutUrl}
                   onChange={e => setNewCutUrl(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#090d14] border border-[#232d44] text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                  placeholder="Paste YouTube, Vimeo, Instagram, TikTok, or MP4 URL..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white font-mono"
                 />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Supports YouTube, Vimeo, Instagram Reels, TikTok, and direct CDN .mp4 links.
+                </span>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1e273b]">
+              {/* Live Thumbnail Preview */}
+              {newCutUrl && (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] font-mono uppercase text-slate-400">Live Stream Thumbnail Preview</span>
+                  <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-[#232f48] bg-[#06080d]">
+                    <img
+                      src={getVideoThumbnail(newCutUrl, project?.thumbnailUrl)}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/80 text-[10px] font-mono text-white">
+                      {detectVideoProvider(newCutUrl).toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#182133]">
                 <button
                   type="button"
                   onClick={() => setIsAddAssetModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#182133] text-slate-300 text-xs font-bold hover:bg-[#202c44]"
+                  className="px-4 py-2 rounded-full text-xs text-slate-400 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-900/30 active:scale-95 transition"
+                  className="px-5 py-2 rounded-full bg-white hover:bg-slate-200 text-black text-xs font-bold shadow-lg"
                 >
-                  Save Media Cut
+                  Save to Media Center
                 </button>
               </div>
             </form>
@@ -713,12 +1090,22 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* New Review Session Modal */}
+      {/* ---------------------------------------------------- */}
+      {/* NEW REVIEW SESSION MODAL */}
+      {/* ---------------------------------------------------- */}
       {isNewSessionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[#111724] border border-[#232d44] rounded-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95">
-            <h3 className="text-base font-bold text-white mb-1">Create Client Review Session</h3>
-            <p className="text-xs text-slate-400 mb-4">Set up a synchronized playlist screener with custom reviewer permissions.</p>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#0b0f19] border border-[#232f48] rounded-3xl shadow-2xl p-6 sm:p-7 relative animate-in fade-in zoom-in-95 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">Create Client Review Link</h3>
+              <button
+                type="button"
+                onClick={() => setIsNewSessionModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             <form onSubmit={handleCreateSession} className="space-y-4">
               <div>
@@ -728,14 +1115,14 @@ export default function ProjectDetailPage() {
                   required
                   value={newSessionTitle}
                   onChange={e => setNewSessionTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#090d14] border border-[#232d44] text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#06080d] border border-[#1e273a] text-xs text-white focus:outline-none focus:border-white"
                 />
               </div>
 
-              <div className="space-y-2 p-3 bg-[#0d121c] rounded-xl border border-[#1e273b]">
+              <div className="space-y-2 p-3 bg-[#06080d] rounded-2xl border border-[#1e273b]">
                 <span className="text-xs font-bold text-white block mb-1">Reviewer Permissions</span>
                 <label className="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
-                  <span>Allow Drawing & Markup</span>
+                  <span>Allow Drawing & Vector Markup</span>
                   <input
                     type="checkbox"
                     checked={sessionAllowDraw}
@@ -754,19 +1141,19 @@ export default function ProjectDetailPage() {
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1e273b]">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#182133]">
                 <button
                   type="button"
                   onClick={() => setIsNewSessionModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#182133] text-slate-300 text-xs font-bold hover:bg-[#202c44]"
+                  className="px-4 py-2 rounded-full text-xs text-slate-400 hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-900/30 active:scale-95 transition"
+                  className="px-5 py-2 rounded-full bg-white hover:bg-slate-200 text-black text-xs font-bold"
                 >
-                  Create Session
+                  Create Review Session
                 </button>
               </div>
             </form>

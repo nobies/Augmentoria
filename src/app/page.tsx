@@ -35,12 +35,12 @@ export default function LandingPage() {
 
   // Auth / Login Modal State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('sarah@vortexpost.com');
+  const [loginEmail, setLoginEmail] = useState('marcus@socialeyes.io');
   const [loginPassword, setLoginPassword] = useState('••••••••••••');
-  const [selectedStudioId, setSelectedStudioId] = useState('comp_vortex');
+  const [selectedStudioId, setSelectedStudioId] = useState('comp_socialeyes');
 
   // Selected Studio preview tab
-  const [activeStudioTab, setActiveStudioTab] = useState('comp_vortex');
+  const [activeStudioTab, setActiveStudioTab] = useState('comp_socialeyes');
   const activeStudioObj = SEED_COMPANIES.find(c => c.id === activeStudioTab) || SEED_COMPANIES[0];
 
   const handleQuickLogin = async (userId: string, companyId: string) => {

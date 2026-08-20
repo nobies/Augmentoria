@@ -459,6 +459,14 @@ export default function ClientReviewPage({ params }: ReviewPageProps) {
               outTime={outTime}
               onTimeUpdate={setCurrentTime}
               onDurationChange={setDuration}
+              onPlayStateChange={(playing) => {
+                if (hasControl) {
+                  realtimeSessionRef.current?.broadcast({
+                    type: playing ? 'PLAY' : 'PAUSE',
+                    time: videoPlayerRef.current?.getCurrentTime() || 0,
+                  });
+                }
+              }}
               onMarkIn={() => setInTime(currentTime)}
               onMarkOut={() => setOutTime(currentTime)}
               onClearRange={() => {

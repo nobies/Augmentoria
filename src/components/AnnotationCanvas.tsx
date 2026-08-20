@@ -314,27 +314,23 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
     fCtx.drawImage(drawingCanvas, 0, 0);
     const drawingDataUrl = finalDrawingCanvas.toDataURL('image/png');
 
-    // 2. Composite snapshot with video frame background
-    const snapshotCanvas = document.createElement('canvas');
-    snapshotCanvas.width = CANVAS_WIDTH;
-    snapshotCanvas.height = CANVAS_HEIGHT;
-    const sCtx = snapshotCanvas.getContext('2d');
-    if (!sCtx) return;
-
+    // 2. Composite snapshot with video frame background (if HTML5 video available)
+    let snapshotDataUrl = drawingDataUrl;
     if (videoElement && videoElement.videoWidth > 0) {
-      sCtx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    } else if (posterDataUrl) {
-      const img = new Image();
-      img.src = posterDataUrl;
-      sCtx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    } else {
-      sCtx.fillStyle = '#0f172a';
-      sCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      try {
+        const snapshotCanvas = document.createElement('canvas');
+        snapshotCanvas.width = CANVAS_WIDTH;
+        snapshotCanvas.height = CANVAS_HEIGHT;
+        const sCtx = snapshotCanvas.getContext('2d');
+        if (sCtx) {
+          sCtx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+          sCtx.drawImage(finalDrawingCanvas, 0, 0);
+          snapshotDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.9);
+        }
+      } catch (e) {
+        snapshotDataUrl = drawingDataUrl;
+      }
     }
-
-    // Composite vector overlay onto snapshot
-    sCtx.drawImage(finalDrawingCanvas, 0, 0);
-    const snapshotDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.9);
 
     onSaveDrawing(drawingDataUrl, snapshotDataUrl);
   };
@@ -533,69 +529,71 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         </div>
       )}
 
-      {/* Main Interactive Freeze-Frame Canvas Container */}
+      {/* Main Interactive Freeze-Frame Canvas Container (Locked 16:9 aspect-video for 100% multi-device coordinate precision) */}
       <div
         ref={containerRef}
         className="relative flex-1 w-full max-h-[82vh] flex items-center justify-center overflow-hidden my-auto"
       >
-        {/* Underlay Video Frame Background for HTML5 video if available */}
-        {videoElement && videoElement.videoWidth > 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <canvas
-              ref={node => {
-                if (node && videoElement) {
-                  node.width = CANVAS_WIDTH;
-                  node.height = CANVAS_HEIGHT;
-                  const ctx = node.getContext('2d');
-                  if (ctx) ctx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                }
-              }}
-              className="w-full h-full object-contain opacity-95"
-            />
-          </div>
-        )}
-
-        {/* Placed Interactive Image Overlay Container */}
-        {placedImage && (
-          <div
-            className="absolute inset-0 pointer-events-none flex items-center justify-center"
-            style={{ width: '100%', height: '100%' }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                left: `${(placedImage.x / CANVAS_WIDTH) * 100}%`,
-                top: `${(placedImage.y / CANVAS_HEIGHT) * 100}%`,
-                width: `${((placedImage.w * imageScale) / CANVAS_WIDTH) * 100}%`,
-                height: `${((placedImage.h * imageScale) / CANVAS_HEIGHT) * 100}%`,
-                opacity: imageOpacity,
-                transform: `rotate(${imageRotation}deg)`,
-                cursor: 'grab',
-                pointerEvents: 'auto',
-              }}
-              className="border-2 border-dashed border-purple-500 rounded shadow-2xl group"
-            >
-              <img
-                src={placedImage.img.src}
-                alt="Placed plate"
-                className="w-full h-full object-contain pointer-events-none select-none"
+        <div className="relative aspect-video w-full max-h-full max-w-full flex items-center justify-center">
+          {/* Underlay Video Frame Background for HTML5 video if available */}
+          {videoElement && videoElement.videoWidth > 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <canvas
+                ref={node => {
+                  if (node && videoElement) {
+                    node.width = CANVAS_WIDTH;
+                    node.height = CANVAS_HEIGHT;
+                    const ctx = node.getContext('2d');
+                    if (ctx) ctx.drawImage(videoElement, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                  }
+                }}
+                className="w-full h-full object-fill opacity-95"
               />
-              <span className="absolute -top-5 left-0 px-1.5 py-0.5 rounded bg-purple-600 text-white text-[8px] font-bold">
-                Drag to Move
-              </span>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Foreground Active Vector Drawing Canvas */}
-        <canvas
-          ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          className="relative z-20 w-full h-full object-contain cursor-crosshair"
-        />
+          {/* Placed Interactive Image Overlay Container */}
+          {placedImage && (
+            <div
+              className="absolute inset-0 pointer-events-none flex items-center justify-center"
+              style={{ width: '100%', height: '100%' }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${(placedImage.x / CANVAS_WIDTH) * 100}%`,
+                  top: `${(placedImage.y / CANVAS_HEIGHT) * 100}%`,
+                  width: `${((placedImage.w * imageScale) / CANVAS_WIDTH) * 100}%`,
+                  height: `${((placedImage.h * imageScale) / CANVAS_HEIGHT) * 100}%`,
+                  opacity: imageOpacity,
+                  transform: `rotate(${imageRotation}deg)`,
+                  cursor: 'grab',
+                  pointerEvents: 'auto',
+                }}
+                className="border-2 border-dashed border-purple-500 rounded shadow-2xl group"
+              >
+                <img
+                  src={placedImage.img.src}
+                  alt="Placed plate"
+                  className="w-full h-full object-fill pointer-events-none select-none"
+                />
+                <span className="absolute -top-5 left-0 px-1.5 py-0.5 rounded bg-purple-600 text-white text-[8px] font-bold">
+                  Drag to Move
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Foreground Active Vector Drawing Canvas */}
+          <canvas
+            ref={canvasRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            className="relative z-20 w-full h-full object-fill cursor-crosshair"
+          />
+        </div>
       </div>
     </div>
   );

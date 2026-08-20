@@ -337,19 +337,9 @@ export default function DashboardPage() {
         <StudioBrandingModal
           isOpen={isBrandingOpen}
           onClose={() => setIsBrandingOpen(false)}
-          branding={{
-            name: currentCompany.name,
-            tagline: currentCompany.tagline || '',
-            primaryColor: currentCompany.brandPrimary,
-            secondaryColor: currentCompany.brandSecondary,
-          }}
+          company={currentCompany}
           onSaveBranding={async updated => {
-            await updateCompanyBranding({
-              name: updated.name,
-              tagline: updated.tagline,
-              brandPrimary: updated.primaryColor,
-              brandSecondary: updated.secondaryColor,
-            });
+            await updateCompanyBranding(updated);
             setIsBrandingOpen(false);
           }}
         />

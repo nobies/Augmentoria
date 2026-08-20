@@ -56,7 +56,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Fully portable self-contained payload that works across any browser (Chrome, Edge, Safari, Mobile)
+  // Lightweight, compact URL-safe payload that works seamlessly across all networks and browsers
   const payload = {
     projectId: project.id,
     cutId: cut.id,
@@ -76,23 +76,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       videoUrlB: cut.videoUrlB,
       durationSeconds: cut.durationSeconds,
     },
-    notes: (notes || []).map(n => ({
-      id: n.id,
-      cutId: n.cutId,
-      category: n.category,
-      presetLabel: n.presetLabel,
-      text: n.text,
-      frameNumber: n.frameNumber,
-      timecode: n.timecode,
-      timecodeOut: n.timecodeOut,
-      frameOut: n.frameOut,
-      drawingData: n.drawingData,
-      colorGrade: n.colorGrade,
-      stillImageUrl: n.stillImageUrl,
-      authorName: n.authorName,
-      isResolved: n.isResolved,
-    })),
-    branding: branding || { name: 'Studio', tagline: 'Post-Production Suite' },
+    branding: branding
+      ? {
+          name: branding.name,
+          tagline: branding.tagline,
+          primaryColor: branding.primaryColor,
+          secondaryColor: branding.secondaryColor,
+        }
+      : undefined,
     p: permissions,
     created: Date.now(),
   };

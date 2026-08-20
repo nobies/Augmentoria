@@ -14,6 +14,7 @@ import {
   Upload,
   HardDrive,
   Tv,
+  Search,
 } from 'lucide-react';
 import { Project, Cut } from '@/lib/supabase';
 import { STANDARD_FPS_LIST } from '@/lib/timecode';
@@ -48,6 +49,7 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
   onDeleteCut,
 }) => {
   const [tab, setTab] = useState<'switch' | 'new-proj' | 'new-cut'>('switch');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // New Project Form
   const [newProjName, setNewProjName] = useState('');
@@ -163,12 +165,32 @@ export const ProjectManagerModal: React.FC<ProjectManagerModalProps> = ({
           {tab === 'switch' && (
             <div className="space-y-6">
               {/* Projects List */}
-              <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Projects</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {projects.map(p => {
-                    const isSelected = activeProject?.id === p.id;
-                    return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Projects ({projects.length})
+                  </div>
+                  <div className="relative w-64">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Search 500 projects..."
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#0a0e17] border border-[#232d44] text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[280px] overflow-y-auto pr-1">
+                  {projects
+                    .filter(p =>
+                      !searchQuery.trim() ||
+                      p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+                    )
+                    .map(p => {
+                      const isSelected = activeProject?.id === p.id;
+                      return (
                       <div
                         key={p.id}
                         onClick={() => onSelectProject(p)}

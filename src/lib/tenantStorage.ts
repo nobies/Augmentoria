@@ -924,6 +924,7 @@ export async function getProjectsByClient(clientId: string): Promise<Project[]> 
 export async function getProjectById(projectId: string): Promise<Project | null> {
   const db = await getTenantDB();
   if (!db) return SEED_PROJECTS.find(p => p.id === projectId) || null;
+  await initTenantSeed();
   const p = await db.get('projects', projectId);
   return p || SEED_PROJECTS.find(proj => proj.id === projectId) || null;
 }

@@ -48,6 +48,7 @@ import {
   getProjectById as getTenantProjectById,
   getProjectsByCompany,
   getAssetVersionsByProject,
+  initTenantSeed,
 } from '@/lib/tenantStorage';
 
 import {
@@ -127,84 +128,100 @@ function ScreenerStudioContent() {
       const b = await getStudioBranding();
       setBranding(b);
 
-      let projs = await getAllProjects();
+      await initTenantSeed();
 
-      if (projs.length === 0) {
-        const tenantProjects = await getProjectsByCompany('comp_socialeyes');
-        if (tenantProjects.length > 0) {
-          projs = tenantProjects.map(tp => ({
-            id: tp.id,
-            name: tp.name,
-            fps: tp.fps || 25,
-            dropFrame: tp.dropFrame || false,
-            startTimecode: tp.startTimecode || '01:00:00:00',
-            createdAt: tp.createdAt,
-          }));
-          for (const p of projs.slice(0, 30)) {
-            await saveProject(p);
-          }
+      // 1. Load all 500 catalog projects from Socialeyes Studio
+      const tenantProjects = await getProjectsByCompany('comp_socialeyes');
+      const allScreenerProjects: Project[] = tenantProjects.map(tp => ({
+        id: tp.id,
+        name: tp.name,
+        fps: tp.fps || 24,
+        dropFrame: tp.dropFrame || false,
+        startTimecode: tp.startTimecode || '01:00:00:00',
+        createdAt: tp.createdAt,
+      }));
+
+      // Also include any user-created custom projects
+      const localProjs = await getAllProjects();
+      for (const lp of localProjs) {
+        if (!allScreenerProjects.some(p => p.id === lp.id)) {
+          allScreenerProjects.unshift(lp);
         }
       }
 
+      // 2. Identify the target project
       let targetProj: Project | null = null;
       if (requestedProjectId) {
-        targetProj = projs.find(p => p.id === requestedProjectId) || null;
+        targetProj = allScreenerProjects.find(p => p.id === requestedProjectId) || null;
         if (!targetProj) {
           const tenantProj = await getTenantProjectById(requestedProjectId);
           if (tenantProj) {
             targetProj = {
               id: tenantProj.id,
               name: tenantProj.name,
-              fps: tenantProj.fps || 25,
+              fps: tenantProj.fps || 24,
               dropFrame: tenantProj.dropFrame || false,
               startTimecode: tenantProj.startTimecode || '01:00:00:00',
               createdAt: tenantProj.createdAt,
             };
-            await saveProject(targetProj);
-            projs.unshift(targetProj);
+            allScreenerProjects.unshift(targetProj);
           }
         }
       }
 
-      setProjects(projs);
+      const activeP = targetProj || (allScreenerProjects.length > 0 ? allScreenerProjects[0] : null);
+      setProjects(allScreenerProjects);
 
-      const activeP = targetProj || (projs.length > 0 ? projs[0] : null);
       if (activeP) {
         setActiveProject(activeP);
-        let pCuts = await getCutsForProject(activeP.id);
-        if (pCuts.length === 0) {
-          const versions = await getAssetVersionsByProject(activeP.id);
-          if (versions.length > 0) {
-            for (const v of versions) {
-              const newCut: Cut = {
-                id: v.id,
-                projectId: activeP.id,
-                name: v.name,
-                provider: v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local',
-                videoUrl: v.videoUrl || 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
-                durationSeconds: v.durationSeconds || 120,
-                createdAt: v.createdAt,
-              };
-              await saveCut(newCut);
-              pCuts.push(newCut);
-            }
-          } else {
-            // Default fallback cut for project
-            const defaultCut: Cut = {
-              id: `cut_${activeP.id}_1`,
+
+        // 3. Load all versions/cuts for the active project
+        const versions = await getAssetVersionsByProject(activeP.id);
+        const pCuts: Cut[] = [];
+
+        if (versions.length > 0) {
+          for (const v of versions) {
+            const cutProvider = v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local';
+            const cutVideoUrl = v.videoUrl || 'https://www.youtube.com/watch?v=aqz-KE-bpKQ';
+            pCuts.push({
+              id: v.id,
               projectId: activeP.id,
-              name: 'Cut 1 — Director’s Assembly',
-              provider: 'youtube',
-              videoUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
-              durationSeconds: 120,
-              createdAt: new Date().toISOString(),
-            };
-            await saveCut(defaultCut);
-            pCuts.push(defaultCut);
+              name: v.name,
+              provider: cutProvider as any,
+              videoUrl: cutVideoUrl,
+              durationSeconds: v.durationSeconds || 120,
+              createdAt: v.createdAt,
+            });
           }
         }
+
+        // Merge any cuts saved in local storage
+        const savedCuts = await getCutsForProject(activeP.id);
+        for (const sc of savedCuts) {
+          if (!pCuts.some(c => c.id === sc.id)) {
+            pCuts.push(sc);
+          }
+        }
+
+        if (pCuts.length === 0) {
+          pCuts.push({
+            id: `cut_${activeP.id}_1`,
+            projectId: activeP.id,
+            name: 'Cut 1 — Director’s Assembly',
+            provider: 'youtube',
+            videoUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+            durationSeconds: 120,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        for (const c of pCuts) {
+          await saveCut(c);
+        }
+
         setCuts(pCuts);
 
+        // 4. Select requested cut or first cut
         let activeC: Cut | null = null;
         if (requestedCutId) {
           activeC = pCuts.find(c => c.id === requestedCutId) || null;
@@ -376,25 +393,48 @@ function ScreenerStudioContent() {
   // Switch Project
   const handleSelectProject = async (proj: Project) => {
     setActiveProject(proj);
-    let pCuts = await getCutsForProject(proj.id);
-    if (pCuts.length === 0) {
-      const versions = await getAssetVersionsByProject(proj.id);
-      if (versions.length > 0) {
-        for (const v of versions) {
-          const newCut: Cut = {
-            id: v.id,
-            projectId: proj.id,
-            name: v.name,
-            provider: v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local',
-            videoUrl: v.videoUrl,
-            durationSeconds: v.durationSeconds || 120,
-            createdAt: v.createdAt,
-          };
-          await saveCut(newCut);
-          pCuts.push(newCut);
-        }
+    const versions = await getAssetVersionsByProject(proj.id);
+    const pCuts: Cut[] = [];
+
+    if (versions.length > 0) {
+      for (const v of versions) {
+        const cutProvider = v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local';
+        const cutVideoUrl = v.videoUrl || 'https://www.youtube.com/watch?v=aqz-KE-bpKQ';
+        pCuts.push({
+          id: v.id,
+          projectId: proj.id,
+          name: v.name,
+          provider: cutProvider as any,
+          videoUrl: cutVideoUrl,
+          durationSeconds: v.durationSeconds || 120,
+          createdAt: v.createdAt,
+        });
       }
     }
+
+    const savedCuts = await getCutsForProject(proj.id);
+    for (const sc of savedCuts) {
+      if (!pCuts.some(c => c.id === sc.id)) {
+        pCuts.push(sc);
+      }
+    }
+
+    if (pCuts.length === 0) {
+      pCuts.push({
+        id: `cut_${proj.id}_1`,
+        projectId: proj.id,
+        name: 'Cut 1 — Director’s Assembly',
+        provider: 'youtube',
+        videoUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+        durationSeconds: 120,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    for (const c of pCuts) {
+      await saveCut(c);
+    }
+
     setCuts(pCuts);
     if (pCuts.length > 0) {
       handleSelectCut(pCuts[0]);

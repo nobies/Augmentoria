@@ -127,7 +127,24 @@ function ScreenerStudioContent() {
       const b = await getStudioBranding();
       setBranding(b);
 
-      const projs = await getAllProjects();
+      let projs = await getAllProjects();
+
+      if (projs.length === 0) {
+        const tenantProjects = await getProjectsByCompany('comp_socialeyes');
+        if (tenantProjects.length > 0) {
+          projs = tenantProjects.map(tp => ({
+            id: tp.id,
+            name: tp.name,
+            fps: tp.fps || 25,
+            dropFrame: tp.dropFrame || false,
+            startTimecode: tp.startTimecode || '01:00:00:00',
+            createdAt: tp.createdAt,
+          }));
+          for (const p of projs.slice(0, 30)) {
+            await saveProject(p);
+          }
+        }
+      }
 
       let targetProj: Project | null = null;
       if (requestedProjectId) {
@@ -138,9 +155,9 @@ function ScreenerStudioContent() {
             targetProj = {
               id: tenantProj.id,
               name: tenantProj.name,
-              fps: tenantProj.fps,
-              dropFrame: tenantProj.dropFrame,
-              startTimecode: tenantProj.startTimecode,
+              fps: tenantProj.fps || 25,
+              dropFrame: tenantProj.dropFrame || false,
+              startTimecode: tenantProj.startTimecode || '01:00:00:00',
               createdAt: tenantProj.createdAt,
             };
             await saveProject(targetProj);
@@ -164,13 +181,26 @@ function ScreenerStudioContent() {
                 projectId: activeP.id,
                 name: v.name,
                 provider: v.provider === 'youtube' ? 'youtube' : v.provider === 'vimeo' ? 'vimeo' : 'local',
-                videoUrl: v.videoUrl,
+                videoUrl: v.videoUrl || 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
                 durationSeconds: v.durationSeconds || 120,
                 createdAt: v.createdAt,
               };
               await saveCut(newCut);
               pCuts.push(newCut);
             }
+          } else {
+            // Default fallback cut for project
+            const defaultCut: Cut = {
+              id: `cut_${activeP.id}_1`,
+              projectId: activeP.id,
+              name: 'Cut 1 — Director’s Assembly',
+              provider: 'youtube',
+              videoUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+              durationSeconds: 120,
+              createdAt: new Date().toISOString(),
+            };
+            await saveCut(defaultCut);
+            pCuts.push(defaultCut);
           }
         }
         setCuts(pCuts);
@@ -689,6 +719,12 @@ function ScreenerStudioContent() {
                 outTime={outTime}
                 onTimeUpdate={setCurrentTime}
                 onDurationChange={setDuration}
+                onPlayStateChange={(playing) => {
+                  realtimeSessionRef.current?.broadcast({
+                    type: playing ? 'PLAY' : 'PAUSE',
+                    time: videoPlayerRef.current?.getCurrentTime() || 0,
+                  });
+                }}
                 onMarkIn={handleMarkIn}
                 onMarkOut={handleMarkOut}
                 onClearRange={handleClearRange}

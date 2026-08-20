@@ -1,4 +1,4 @@
-﻿# 🚀 Augmentoria — Project Setup & Environment Configurations Guide
+# 🚀 Augmentoria — Project Setup & Environment Configurations Guide
 
 > **دليل الإعداد الكامل للمشروع والانتقال لجهاز جديد**  
 > يحتوي هذا الملف على كافة إعدادات المشروع، الروابط، المتغيرات البيئية (`.env.local`)، إعدادات GitHub، Supabase، و Vercel، وخطوات التشغيل خطوة بخطوة على أي جهاز جديد.

@@ -31,6 +31,7 @@ import {
   SEED_COMPANIES,
   SEED_USERS,
 } from '@/lib/tenantStorage';
+import { createClient as createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -55,7 +56,7 @@ interface AuthContextType {
   canSwitchCompany: boolean;
 
   // Actions
-  login: (email: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   switchUser: (userId: string) => Promise<void>;
   switchCompany: (companyId: string) => Promise<void>;
@@ -75,13 +76,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
   const [isLoading, setIsLoading] = useState(false);
-  const [allCompanies, setAllCompanies] = useState<Company[]>(SEED_COMPANIES);
-  const [currentCompany, setCurrentCompany] = useState<Company | null>(SEED_COMPANIES[0]);
-  const [companyUsers, setCompanyUsers] = useState<User[]>(
-    SEED_USERS.filter(u => u.companyId === SEED_COMPANIES[0].id)
-  );
-  const [currentUser, setCurrentUser] = useState<User | null>(SEED_USERS[1]); // Default to Sarah Jenkins (Company Admin @ Vortex)
+  const [allCompanies, setAllCompanies] = useState<Company[]>([]);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
+  const [companyUsers, setCompanyUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [companyClients, setCompanyClients] = useState<Client[]>([]);
   const [companyProjects, setCompanyProjects] = useState<Project[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -89,106 +90,214 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Initialize DB and load active workspace
   const loadWorkspace = async (targetCompanyId?: string, targetUserId?: string) => {
     setIsLoading(true);
-    await initTenantSeed();
-    const comps = await getAllCompanies();
-    setAllCompanies(comps);
+    const supabase = createSupabaseBrowserClient();
 
-    const allUsers = await getAllUsers();
+    // 1. Production Flow: Server-Authoritative Supabase Auth Session
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        // Query profile & company memberships from Supabase
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
 
-    // Check localStorage for persisted session
-    let savedCompanyId = targetCompanyId;
-    let savedUserId = targetUserId;
-    if (typeof window !== 'undefined') {
-      if (!savedCompanyId) savedCompanyId = localStorage.getItem('augmentoria_auth_company') || undefined;
-      if (!savedUserId) savedUserId = localStorage.getItem('augmentoria_auth_user') || undefined;
-    }
+        const { data: membership } = await supabase
+          .from('company_memberships')
+          .select('*, companies(*)')
+          .eq('user_id', authUser.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
-    // Resolve Active User accurately
-    let activeUser: User | null = null;
-    if (savedUserId) {
-      activeUser = allUsers.find(u => u.id === savedUserId) || null;
-    }
-    if (!activeUser) {
-      activeUser = allUsers.find(u => u.role === 'super_admin') || allUsers[0] || SEED_USERS[0];
-    }
-    setCurrentUser(activeUser);
-
-    // Resolve Company based on user role
-    let activeCompId = savedCompanyId;
-    if (activeUser.role !== 'super_admin') {
-      // Non-super-admins are strictly locked to their own company
-      activeCompId = activeUser.companyId;
-    } else {
-      // Super admin can be in any selected company (default to saved or first company)
-      if (!activeCompId) {
-        activeCompId = comps[0]?.id || 'comp_vortex';
+        if (membership && membership.companies) {
+          const userComp: Company = {
+            id: membership.companies.id,
+            name: membership.companies.name,
+            slug: membership.companies.slug,
+            plan: membership.companies.plan || 'starter',
+            brandPrimary: membership.companies.brand_primary || '#3b82f6',
+            brandSecondary: membership.companies.brand_secondary || '#10b981',
+            logoUrl: membership.companies.logo_url || '',
+            createdAt: membership.companies.created_at,
+          };
+          const cloudUser: User = {
+            id: authUser.id,
+            companyId: userComp.id,
+            name: profile?.display_name || authUser.email?.split('@')[0] || 'User',
+            email: authUser.email || '',
+            role: membership.role || 'creative',
+            avatarUrl: profile?.avatar_url || '',
+            createdAt: authUser.created_at,
+          };
+          setCurrentUser(cloudUser);
+          setCurrentCompany(userComp);
+          setAllCompanies([userComp]);
+          setIsLoading(false);
+          return;
+        }
       }
+    } catch (e) {
+      console.warn('Supabase Auth Session check skipped/error:', e);
     }
 
-    const activeComp = comps.find(c => c.id === activeCompId) || comps[0];
-    setCurrentCompany(activeComp || null);
+    // 2. Demo Sandbox Mode (Explicitly gated behind NEXT_PUBLIC_DEMO_MODE=true)
+    if (isDemoMode) {
+      await initTenantSeed();
+      const comps = await getAllCompanies();
+      setAllCompanies(comps);
 
-    if (activeComp) {
-      const users = await getUsersByCompany(activeComp.id);
-      setCompanyUsers(users);
+      const allUsers = await getAllUsers();
+      let savedCompanyId = targetCompanyId;
+      let savedUserId = targetUserId;
+      if (typeof window !== 'undefined') {
+        if (!savedCompanyId) savedCompanyId = localStorage.getItem('augmentoria_auth_company') || undefined;
+        if (!savedUserId) savedUserId = localStorage.getItem('augmentoria_auth_user') || undefined;
+      }
 
-      const clients = await getClientsByCompany(activeComp.id);
-      setCompanyClients(clients);
+      let activeUser: User | null = null;
+      if (savedUserId) {
+        activeUser = allUsers.find(u => u.id === savedUserId) || null;
+      }
+      if (!activeUser) {
+        activeUser = allUsers.find(u => u.role === 'super_admin') || allUsers[0] || SEED_USERS[0];
+      }
+      setCurrentUser(activeUser);
 
-      const projs = await getProjectsByCompany(activeComp.id);
-      setCompanyProjects(projs);
+      let activeCompId = savedCompanyId;
+      if (activeUser.role !== 'super_admin') {
+        activeCompId = activeUser.companyId;
+      } else {
+        if (!activeCompId) {
+          activeCompId = comps[0]?.id || 'comp_vortex';
+        }
+      }
 
-      const logs = await getActivityLogsByCompany(activeComp.id);
-      setActivityLogs(logs);
+      const activeComp = comps.find(c => c.id === activeCompId) || comps[0];
+      setCurrentCompany(activeComp || null);
+
+      if (activeComp) {
+        const users = await getUsersByCompany(activeComp.id);
+        setCompanyUsers(users);
+
+        const clients = await getClientsByCompany(activeComp.id);
+        setCompanyClients(clients);
+
+        const projs = await getProjectsByCompany(activeComp.id);
+        setCompanyProjects(projs);
+
+        const logs = await getActivityLogsByCompany(activeComp.id);
+        setActivityLogs(logs);
+      }
+    } else {
+      // In Production without active auth session: reset state
+      setCurrentUser(null);
+      setCurrentCompany(null);
     }
+
     setIsLoading(false);
   };
 
   useEffect(() => {
     loadWorkspace();
+
+    const supabase = createSupabaseBrowserClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') {
+        loadWorkspace();
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
-  const login = async (email: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
+    const supabase = createSupabaseBrowserClient();
     const lower = email.trim().toLowerCase();
-    const allUsers = await getAllUsers();
-    const user = allUsers.find(u => u.email.toLowerCase() === lower);
 
-    if (!user) {
+    // 1. Supabase Cloud Authentication
+    if (password) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: lower,
+          password: password,
+        });
+        if (data?.user && !error) {
+          await loadWorkspace();
+          setIsLoading(false);
+          return { success: true };
+        }
+        if (error) {
+          if (!isDemoMode) {
+            setIsLoading(false);
+            return { success: false, error: error.message };
+          }
+        }
+      } catch (e: any) {
+        if (!isDemoMode) {
+          setIsLoading(false);
+          return { success: false, error: e?.message || 'Authentication error' };
+        }
+      }
+    }
+
+    // 2. Demo Sandbox Fallback (Only if NEXT_PUBLIC_DEMO_MODE=true)
+    if (isDemoMode) {
+      const allUsers = await getAllUsers();
+      const user = allUsers.find(u => u.email.toLowerCase() === lower);
+
+      if (!user) {
+        setIsLoading(false);
+        return { success: false, error: `No demo account registered with ${email}` };
+      }
+
+      const comps = await getAllCompanies();
+      const userCompany = comps.find(c => c.id === user.companyId) || comps[0];
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('augmentoria_auth_user', user.id);
+        localStorage.setItem('augmentoria_auth_company', userCompany.id);
+      }
+
+      setCurrentUser(user);
+      setCurrentCompany(userCompany);
+
+      const users = await getUsersByCompany(userCompany.id);
+      setCompanyUsers(users);
+      const clients = await getClientsByCompany(userCompany.id);
+      setCompanyClients(clients);
+      const projs = await getProjectsByCompany(userCompany.id);
+      setCompanyProjects(projs);
+      const logs = await getActivityLogsByCompany(userCompany.id);
+      setActivityLogs(logs);
+
       setIsLoading(false);
-      return { success: false, error: `No account registered with ${email}` };
+      return { success: true };
     }
-
-    const comps = await getAllCompanies();
-    const userCompany = comps.find(c => c.id === user.companyId) || comps[0];
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('augmentoria_auth_user', user.id);
-      localStorage.setItem('augmentoria_auth_company', userCompany.id);
-    }
-
-    setCurrentUser(user);
-    setCurrentCompany(userCompany);
-
-    const users = await getUsersByCompany(userCompany.id);
-    setCompanyUsers(users);
-    const clients = await getClientsByCompany(userCompany.id);
-    setCompanyClients(clients);
-    const projs = await getProjectsByCompany(userCompany.id);
-    setCompanyProjects(projs);
-    const logs = await getActivityLogsByCompany(userCompany.id);
-    setActivityLogs(logs);
 
     setIsLoading(false);
-    return { success: true };
+    return { success: false, error: 'Password is required to sign in.' };
   };
 
   const logout = async () => {
+    const supabase = createSupabaseBrowserClient();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Supabase signOut error:', e);
+    }
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem('augmentoria_auth_user');
       localStorage.removeItem('augmentoria_auth_company');
     }
-    // Set to default guest or login
+    setCurrentUser(null);
+    setCurrentCompany(null);
     window.location.href = '/login';
   };
 

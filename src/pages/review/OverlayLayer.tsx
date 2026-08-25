@@ -77,11 +77,12 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
       imgInputRef.current?.click();
       return;
     }
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (tool === 'text') {
+      e.preventDefault();
       setTextEdit({ x: p.x, y: p.y, value: '' });
       return;
     }
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (tool === 'pen') setDraft({ type: 'pen', pts: [p], x: p.x, y: p.y, w: 0, h: 0 });
     else setDraft({ type: tool as 'arrow' | 'circle' | 'rect', x: p.x, y: p.y, w: 0, h: 0 });
   };
@@ -158,9 +159,9 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
   const managedList = layers.filter((l) => l.commentId === draftKey);
 
   return (
-    <div ref={wrapRef} className="absolute inset-0">
+    <div ref={wrapRef} className="pointer-events-none absolute inset-0">
       <div
-        className={`absolute ${drawing ? 'cursor-crosshair' : 'pointer-events-none'}`}
+        className={`absolute ${drawing ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'}`}
         style={{ left: content.x, top: content.y, width: content.w, height: content.h }}
         onPointerDown={onDown}
         onPointerMove={onMove}
@@ -232,7 +233,7 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
       )}
 
       {managedList.length > 0 && (
-        <div className="absolute start-3 top-3 z-20 w-44 space-y-1 rounded-xl border border-line bg-black/70 p-2 backdrop-blur-md">
+        <div className="pointer-events-auto absolute start-3 top-3 z-20 w-44 space-y-1 rounded-xl border border-line bg-black/70 p-2 backdrop-blur-md">
           <p className="px-1 text-[9px] font-bold tracking-widest text-muted/80 uppercase">Layers ({managedList.length})</p>
           {managedList.map((l, i) => (
             <div key={l.id} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/85">

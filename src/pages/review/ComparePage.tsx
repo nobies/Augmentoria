@@ -2,10 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
 import { useAppState } from '../../lib/store';
+import { idb } from '../../lib/idb';
 import { GoldMark } from '../../components/ui/bits';
 import NotFoundPage from '../NotFoundPage';
 
-type Mode = 'side' | 'wipe' | 'overlay';
+type Mode = 'side' | 'wipe' | 'overlay' | 'flicker';
+
+interface VersionVideoRecord {
+  id: string;
+  name: string;
+  blob: Blob;
+}
 
 export default function ComparePage() {
   const { t, lang } = useLang();
@@ -22,13 +29,23 @@ export default function ComparePage() {
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [dur, setDur] = useState(0);
+  const [showB, setShowB] = useState(false);
 
   const refA = useRef<HTMLVideoElement>(null);
   const refB = useRef<HTMLVideoElement>(null);
   const wiping = useRef(false);
 
-  const srcA = customSrc(pid, vA);
-  const srcB = customSrc(pid, vB);
+  const srcA = useVersionVideo(pid, vA);
+  const srcB = useVersionVideo(pid, vB);
+
+  useEffect(() => {
+    if (mode !== 'flicker') {
+      setShowB(false);
+      return;
+    }
+    const timer = window.setInterval(() => setShowB((current) => !current), 650);
+    return () => window.clearInterval(timer);
+  }, [mode]);
 
   useEffect(() => {
     const a = refA.current;
@@ -37,14 +54,16 @@ export default function ComparePage() {
     const sync = () => {
       if (Math.abs(b.currentTime - a.currentTime) > 0.05) b.currentTime = a.currentTime;
     };
-    a.addEventListener('play', () => {
-      void b.play();
+    const onPlay = () => {
+      void b.play().catch(() => undefined);
       setPlaying(true);
-    });
-    a.addEventListener('pause', () => {
+    };
+    const onPause = () => {
       b.pause();
       setPlaying(false);
-    });
+    };
+    a.addEventListener('play', onPlay);
+    a.addEventListener('pause', onPause);
     a.addEventListener('seeked', sync);
     const onT = () => {
       sync();
@@ -54,6 +73,8 @@ export default function ComparePage() {
     const onD = () => setDur(a.duration || 0);
     a.addEventListener('loadedmetadata', onD);
     return () => {
+      a.removeEventListener('play', onPlay);
+      a.removeEventListener('pause', onPause);
       a.removeEventListener('seeked', sync);
       a.removeEventListener('timeupdate', onT);
       a.removeEventListener('loadedmetadata', onD);
@@ -134,7 +155,7 @@ export default function ComparePage() {
 
           <span className="mx-1 h-6 w-px bg-line" />
 
-          {(['side', 'wipe', 'overlay'] as Mode[]).map((m) => (
+          {(['side', 'wipe', 'overlay', 'flicker'] as Mode[]).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
@@ -142,7 +163,7 @@ export default function ComparePage() {
                 mode === m ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink'
               }`}
             >
-              {t(`cmp_${m}` as never)}
+              {m === 'flicker' ? (lang === 'ar' ? 'وميض' : 'Flicker') : t(`cmp_${m}` as never)}
             </button>
           ))}
         </div>
@@ -170,7 +191,13 @@ export default function ComparePage() {
                 className="absolute inset-0 h-full w-full object-contain"
                 muted
                 playsInline
-                style={mode === 'wipe' ? { clipPath: `inset(0 0 0 ${wipe}%)` } : { opacity: 0.5 }}
+                style={
+                  mode === 'wipe'
+                    ? { clipPath: `inset(0 0 0 ${wipe}%)` }
+                    : mode === 'flicker'
+                      ? { opacity: showB ? 1 : 0 }
+                      : { opacity: 0.5 }
+                }
               />
               {mode === 'wipe' && (
                 <>
@@ -227,12 +254,39 @@ export default function ComparePage() {
   );
 }
 
-function customSrc(pid?: string, v?: string) {
+function defaultSrc(pid?: string) {
   const map: Record<string, string> = {
     'p-vodafone': '/demo/vodafone-v04.mp4',
     'p-flynas': '/demo/flynas-v02.mp4',
     'p-rta': '/demo/rta-v06.mp4'
   };
-  void v;
   return (pid && map[pid]) || '/demo/vodafone-v04.mp4';
+}
+
+function useVersionVideo(pid?: string, version?: string) {
+  const fallback = defaultSrc(pid);
+  const [src, setSrc] = useState(fallback);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setSrc(fallback);
+    if (!pid || !version) return;
+
+    idb
+      .get<VersionVideoRecord>('video', `${pid}__${version}`)
+      .then((record) => {
+        if (!active || !record?.blob) return;
+        objectUrl = URL.createObjectURL(record.blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fallback, pid, version]);
+
+  return src;
 }

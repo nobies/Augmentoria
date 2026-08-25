@@ -64,5 +64,6 @@ export const idb = {
   put: (c: Collection, rec: { id: string; blob?: Blob } & Record<string, unknown>) =>
     runTx<IDBValidKey>(c, 'readwrite', (s) => s.put(rec as never)),
   all: <T = ImageRecord>(c: Collection) => runTx<T[]>(c, 'readonly', (s) => s.getAll()),
+  get: <T = ImageRecord>(c: Collection, id: string) => runTx<T | undefined>(c, 'readonly', (s) => s.get(id)),
   del: (c: Collection, id: string) => runTx<undefined>(c, 'readwrite', (s) => s.delete(id))
 };

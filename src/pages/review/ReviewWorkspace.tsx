@@ -30,6 +30,11 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const state = useAppState();
   const guest = mode === 'guest';
   const canComment = guest || can('reviews.comment');
+  const canModerate = !guest && can('projects.edit');
+  const canExport = !guest && can('reports.export');
+  const canShare = !guest && can('projects.edit');
+  const canHostSession = !guest && can('projects.edit');
+  const actorId = guest ? 'guest' : user.id;
 
   const project = state.projects.find((p) => p.id === pid);
   const projectId = project?.id;
@@ -82,10 +87,10 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (guest || !canComment || !projectId) return;
+    if (!canHostSession || !projectId) return;
     const rec = actions.startSession(projectId, version, user.id);
     setSessionId(rec.id);
-  }, [canComment, guest, projectId, user.id, version]);
+  }, [canHostSession, projectId, user.id, version]);
 
   const onUploadVideo = async (file: File) => {
     const url = URL.createObjectURL(file);
@@ -206,7 +211,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     const rec = actions.addComment({
       projectId: project.id,
       version,
-      authorId: user.id,
+      authorId: actorId,
       kind: payload.kind,
       tc: payload.tc,
       rangeEnd: payload.rangeEnd,
@@ -232,7 +237,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     <div className="flex h-[100dvh] overflow-hidden flex-col bg-bg text-ink">
       <header className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-line px-2 sm:px-4 lg:px-5">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          {!guest && (
+          {canExport && (
             <Link to="/app/projects" className="rounded-full border border-line p-2 text-muted transition-colors hover:border-accent hover:text-accent">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rtl:rotate-180">
                 <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
@@ -302,7 +307,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
               {t('rv_demo_clip')}
             </span>
           )}
-          {!guest && (
+          {canExport && (
             <div className="relative">
               <button
                 onClick={() => setExportOpen((o) => !o)}
@@ -360,7 +365,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
               )}
             </div>
           )}
-          {!guest && (
+          {canShare && (
             <button
               onClick={() => {
                 void navigator.clipboard.writeText(shareUrl);
@@ -570,13 +575,14 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
           members={memberMap}
           activeId={activeId}
           canComment={canPost}
+          canModerate={canModerate}
           getTime={getTime}
           getThumb={getThumb}
           onSeek={seek}
           onSelect={setActiveId}
-          onToggleResolve={canPost ? actions.toggleCommentResolved : () => {}}
-          onReply={canPost ? (id, txt) => actions.addReply(id, user.id, txt) : () => {}}
-          onDelete={can('projects.edit') ? actions.deleteComment : () => {}}
+          onToggleResolve={canModerate ? actions.toggleCommentResolved : () => {}}
+          onReply={canPost ? (id, txt) => actions.addReply(id, actorId, txt) : () => {}}
+          onDelete={canModerate ? actions.deleteComment : () => {}}
           onPost={post}
           onDraftRange={setDraftRange}
           draftLayers={state.layers.filter((l) => l.commentId === DRAFT)}

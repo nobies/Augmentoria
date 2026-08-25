@@ -14,6 +14,7 @@ interface Props {
   members: Map<string, MemberLite>;
   activeId: string | null;
   canComment: boolean;
+  canModerate: boolean;
   getTime: () => number;
   getThumb: () => string;
   onSeek: (t: number) => void;
@@ -178,36 +179,42 @@ export default function CommentsPanel(p: Props) {
                     )}
                     <span>{c.createdAt.slice(11)}</span>
                     <span className="ms-auto flex items-center gap-1.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          p.onToggleResolve(c.id);
-                        }}
-                        title={c.resolved ? t('rv_unresolve') : t('rv_resolve')}
-                        className={`rounded-full border px-2 py-0.5 font-semibold transition-colors ${
-                          c.resolved ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300' : 'border-line hover:border-emerald-400 hover:text-emerald-300'
-                        }`}
-                      >
-                        ✓
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReplyTo(replyTo === c.id ? null : c.id);
-                        }}
-                        className="rounded-full border border-line px-2 py-0.5 transition-colors hover:border-accent hover:text-accent"
-                      >
-                        ↩ {c.replies.length || ''}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          p.onDelete(c.id);
-                        }}
-                        className="rounded-full border border-line px-2 py-0.5 transition-colors hover:border-red-400 hover:text-red-400"
-                      >
-                        🗑
-                      </button>
+                      {p.canModerate && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            p.onToggleResolve(c.id);
+                          }}
+                          title={c.resolved ? t('rv_unresolve') : t('rv_resolve')}
+                          className={`rounded-full border px-2 py-0.5 font-semibold transition-colors ${
+                            c.resolved ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300' : 'border-line hover:border-emerald-400 hover:text-emerald-300'
+                          }`}
+                        >
+                          ✓
+                        </button>
+                      )}
+                      {p.canComment && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReplyTo(replyTo === c.id ? null : c.id);
+                          }}
+                          className="rounded-full border border-line px-2 py-0.5 transition-colors hover:border-accent hover:text-accent"
+                        >
+                          ↩ {c.replies.length || ''}
+                        </button>
+                      )}
+                      {p.canModerate && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            p.onDelete(c.id);
+                          }}
+                          className="rounded-full border border-line px-2 py-0.5 transition-colors hover:border-red-400 hover:text-red-400"
+                        >
+                          🗑
+                        </button>
+                      )}
                     </span>
                   </div>
 

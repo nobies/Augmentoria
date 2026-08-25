@@ -2,17 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
 import { useAppState } from '../../lib/store';
-import { idb } from '../../lib/idb';
+import { mediaStorage } from '../../lib/mediaStorage';
 import { GoldMark } from '../../components/ui/bits';
 import NotFoundPage from '../NotFoundPage';
 
 type Mode = 'side' | 'wipe' | 'overlay' | 'flicker';
-
-interface VersionVideoRecord {
-  id: string;
-  name: string;
-  blob: Blob;
-}
 
 export default function ComparePage() {
   const { t, lang } = useLang();
@@ -273,8 +267,8 @@ function useVersionVideo(pid?: string, version?: string) {
     setSrc(fallback);
     if (!pid || !version) return;
 
-    idb
-      .get<VersionVideoRecord>('video', `${pid}__${version}`)
+    mediaStorage
+      .getVersionVideo(pid, version)
       .then((record) => {
         if (!active || !record?.blob) return;
         objectUrl = URL.createObjectURL(record.blob);

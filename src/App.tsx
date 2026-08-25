@@ -11,6 +11,7 @@ import { Navigate, useParams } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import NotFoundPage from './pages/NotFoundPage';
 import { GoldMark } from './components/ui/bits';
+import { RequireAuth } from './components/RequireAuth';
 
 const ProjectDetailPage = lazy(() => import('./pages/app/ProjectDetailPage'));
 const ClientsPage = lazy(() => import('./pages/app/clients/ClientsPage'));
@@ -45,8 +46,22 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/review/:pid/:v" element={<ReviewWorkspace mode="guest" />} />
-          <Route path="/studio/review/:pid/:v" element={<ReviewWorkspace />} />
-          <Route path="/studio/compare/:pid/:vA/:vB" element={<ComparePage />} />
+          <Route
+            path="/studio/review/:pid/:v"
+            element={
+              <RequireAuth>
+                <ReviewWorkspace />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/studio/compare/:pid/:vA/:vB"
+            element={
+              <RequireAuth>
+                <ComparePage />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/login"
             element={
@@ -66,8 +81,9 @@ export default function App() {
           <Route
             path="/app/*"
             element={
-              <AppShell>
-                <Routes>
+              <RequireAuth>
+                <AppShell>
+                  <Routes>
                   <Route index element={<DashboardPage />} />
                   <Route path="projects" element={<ProjectsPage />} />
                   <Route path="projects/:id" element={<ProjectDetailPage />} />
@@ -110,8 +126,9 @@ export default function App() {
                     }
                   />
                   <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </AppShell>
+                  </Routes>
+                </AppShell>
+              </RequireAuth>
             }
           />
           <Route path="*" element={<NotFoundPage />} />

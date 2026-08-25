@@ -1,6 +1,22 @@
 import { expect, test } from '@playwright/test';
 
+const DEMO_USER = {
+  id: 'u-mw',
+  name: 'Mohamed Wageeh',
+  email: 'm.wageeh@aroma.studio',
+  roleId: 'am',
+  companyId: 'c-aroma',
+  title: 'Account Manager'
+};
+
+async function authenticate(page: import('@playwright/test').Page) {
+  await page.addInitScript((user) => {
+    window.localStorage.setItem('augmentoria-auth-user', JSON.stringify(user));
+  }, DEMO_USER);
+}
+
 test('dashboard New Project action opens the real modal', async ({ page }) => {
+  await authenticate(page);
   await page.goto('/app');
 
   await page.getByRole('button', { name: /New Project|مشروع جديد/i }).click();
@@ -10,6 +26,7 @@ test('dashboard New Project action opens the real modal', async ({ page }) => {
 });
 
 test('project Upload Version action opens the upload modal', async ({ page }) => {
+  await authenticate(page);
   await page.goto('/app/projects/p-vodafone');
 
   await page.getByRole('button', { name: /Upload Version|رفع نسخة/i }).click();
@@ -19,6 +36,7 @@ test('project Upload Version action opens the upload modal', async ({ page }) =>
 });
 
 test('unknown app and public review routes show 404 instead of another project', async ({ page }) => {
+  await authenticate(page);
   await page.goto('/app/does-not-exist');
   await expect(page.getByText(/Page not found|الصفحة غير موجودة/i)).toBeVisible();
 
@@ -39,7 +57,10 @@ test.fixme('mobile review keeps the video visible above a collapsible comments d
   expect((await video.boundingBox())?.height ?? 0).toBeGreaterThan(180);
 });
 
-test.fixme('anonymous users are redirected away from the internal app', async ({ page }) => {
-  await page.goto('/app');
+test('anonymous users are redirected away from the internal app and returned after login', async ({ page }) => {
+  await page.goto('/app/projects/p-vodafone');
   await expect(page).toHaveURL(/\/login$/);
+
+  await page.getByRole('button', { name: /Account Manager|أكاونت مانجر/i }).click();
+  await expect(page).toHaveURL(/\/app\/projects\/p-vodafone$/);
 });

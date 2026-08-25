@@ -221,7 +221,9 @@ const dict = {
     auth_terms: 'By creating an account you agree to our Terms and Privacy Policy.',
     auth_submit_signin: 'Sign in',
     auth_submit_signup: 'Create account',
-    auth_preview_note: 'UI preview — backend connection coming soon.'
+    auth_preview_note: 'UI preview — backend connection coming soon.',
+    auth_demo_error: 'This account is not in the local demo. Choose one of the demo roles below.',
+    auth_backend_pending: 'Account creation and Google sign-in need the production authentication backend. Use a demo role for now.'
   },
   ar: {
     nav_product: 'المنتج',
@@ -440,7 +442,9 @@ const dict = {
     auth_terms: 'بإنشاء حسابك انت موافق على الشروط وسياسة الخصوصية.',
     auth_submit_signin: 'دخول',
     auth_submit_signup: 'إنشاء الحساب',
-    auth_preview_note: 'معاينة واجهة — الربط بالباك إند قريبًا.'
+    auth_preview_note: 'معاينة واجهة — الربط بالباك إند قريبًا.',
+    auth_demo_error: 'الحساب ده مش موجود في النسخة التجريبية المحلية. اختار واحد من أدوار التجربة بالأسفل.',
+    auth_backend_pending: 'إنشاء الحساب والدخول بجوجل محتاجين باك إند المصادقة الفعلي. استخدم أحد أدوار التجربة حاليًا.'
   }
 } as const;
 

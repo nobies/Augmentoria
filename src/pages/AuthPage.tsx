@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useLang } from '../i18n';
 import { useAuth } from '../context/AuthContext';
@@ -13,25 +13,46 @@ interface Props {
 export default function AuthPage({ mode }: Props) {
   const { t, lang } = useLang();
   const navigate = useNavigate();
+  const location = useLocation();
   const { loginAs } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const isSignup = mode === 'signup';
 
-  const go = () => {
+  const requestedPath = (location.state as { from?: unknown } | null)?.from;
+  const destination = typeof requestedPath === 'string' && requestedPath.startsWith('/') ? requestedPath : '/app';
+
+  const go = (id: string) => {
+    loginAs(id);
     setLoading(true);
-    setTimeout(() => navigate('/app'), 800);
+    navigate(destination, { replace: true });
   };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    go();
+    setAuthError(null);
+
+    if (isSignup) {
+      setAuthError(t('auth_backend_pending'));
+      return;
+    }
+
+    const data = new FormData(e.currentTarget as HTMLFormElement);
+    const email = String(data.get('email') ?? '').trim().toLowerCase();
+    const demoUser = DEMO_USERS.find((candidate) => candidate.email.toLowerCase() === email);
+
+    if (!demoUser) {
+      setAuthError(t('auth_demo_error'));
+      return;
+    }
+
+    go(demoUser.id);
   };
 
   const quickLogin = (id: string) => {
-    loginAs(id);
-    setLoading(true);
-    setTimeout(() => navigate('/app'), 500);
+    setAuthError(null);
+    go(id);
   };
 
   const inputCls =
@@ -73,10 +94,11 @@ export default function AuthPage({ mode }: Props) {
 
       <form onSubmit={submit} className="mt-8 space-y-4">
         {isSignup && (
-          <input type="text" required placeholder={t('auth_name')} autoComplete="name" className={inputCls} />
+          <input name="name" type="text" required placeholder={t('auth_name')} autoComplete="name" className={inputCls} />
         )}
-        <input type="email" required placeholder={t('auth_email')} autoComplete="email" className={inputCls} />
+        <input name="email" type="email" required placeholder={t('auth_email')} autoComplete="email" className={inputCls} />
         <input
+          name="password"
           type="password"
           required
           placeholder={t('auth_password')}
@@ -84,7 +106,7 @@ export default function AuthPage({ mode }: Props) {
           minLength={6}
           className={inputCls}
         />
-        {isSignup && <input type="password" required placeholder={t('auth_confirm')} minLength={6} className={inputCls} />}
+        {isSignup && <input name="confirmPassword" type="password" required placeholder={t('auth_confirm')} minLength={6} className={inputCls} />}
 
         {!isSignup && (
           <div className="flex items-center justify-between text-xs">
@@ -112,6 +134,12 @@ export default function AuthPage({ mode }: Props) {
           )}
         </button>
 
+        {authError && (
+          <p role="alert" className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
+            {authError}
+          </p>
+        )}
+
       </form>
 
       <div className="my-7 flex items-center gap-4 text-[10px] tracking-[0.3em] text-muted/60 uppercase">
@@ -122,7 +150,7 @@ export default function AuthPage({ mode }: Props) {
 
       <button
         type="button"
-        onClick={go}
+        onClick={() => setAuthError(t('auth_backend_pending'))}
         className="flex w-full items-center justify-center gap-3 rounded-full border border-line py-3 text-sm font-medium text-ink/90 transition-all duration-300 hover:border-accent hover:text-accent"
       >
         <svg width="17" height="17" viewBox="0 0 24 24">

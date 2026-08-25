@@ -8,6 +8,7 @@ const KEY = 'augmentoria-auth-user';
 
 interface AuthCtx {
   user: DemoUser;
+  isAuthenticated: boolean;
   can: (p: Perm) => boolean;
   loginAs: (id: string) => void;
   updateProfile: (patch: Partial<Pick<DemoUser, 'name' | 'email' | 'title' | 'avatar'>>) => void;
@@ -16,7 +17,15 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-function loadStored(): DemoUser {
+const GUEST_USER: DemoUser = {
+  id: 'guest',
+  name: 'Guest Reviewer',
+  email: '',
+  roleId: 'client',
+  companyId: ''
+};
+
+function loadStored(): DemoUser | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -26,41 +35,49 @@ function loadStored(): DemoUser {
   } catch {
     /* ignore */
   }
-  return DEMO_USERS.find((u) => u.id === 'u-mw')!;
+  return null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [stored, setStored] = useState<DemoUser>(loadStored);
+  const [stored, setStored] = useState<DemoUser | null>(loadStored);
   const state = useSyncExternalStore(subscribeToState, getAppState);
 
   const liveMember = useMemo(
-    () => state.members.find((m) => m.id === stored.id),
-    [state, stored.id]
+    () => state.members.find((m) => m.id === stored?.id),
+    [state, stored?.id]
   );
 
   const user: DemoUser = useMemo(
-    () => ({
-      ...stored,
-      name: liveMember?.name ?? stored.name,
-      email: liveMember?.email ?? stored.email,
-      title: liveMember?.title ?? stored.title,
-      avatar: liveMember?.avatar ?? stored.avatar,
-      roleId: liveMember?.roleId ?? stored.roleId,
-      extraPerms: liveMember?.extraPerms ?? stored.extraPerms
-    }),
+    () =>
+      stored
+        ? {
+            ...stored,
+            name: liveMember?.name ?? stored.name,
+            email: liveMember?.email ?? stored.email,
+            title: liveMember?.title ?? stored.title,
+            avatar: liveMember?.avatar ?? stored.avatar,
+            roleId: liveMember?.roleId ?? stored.roleId,
+            extraPerms: liveMember?.extraPerms ?? stored.extraPerms
+          }
+        : GUEST_USER,
     [stored, liveMember]
   );
 
-  const perms = useMemo(() => effectivePerms(user.roleId, user.extraPerms), [user.roleId, user.extraPerms]);
+  const perms = useMemo(
+    () => (stored ? effectivePerms(user.roleId, user.extraPerms) : new Set<Perm>()),
+    [stored, user.roleId, user.extraPerms]
+  );
 
   useEffect(() => {
-    localStorage.setItem(KEY, JSON.stringify(stored));
+    if (stored) localStorage.setItem(KEY, JSON.stringify(stored));
+    else localStorage.removeItem(KEY);
   }, [stored]);
 
   return (
     <Ctx.Provider
       value={{
         user,
+        isAuthenticated: stored !== null,
         can: (p) => perms.has(p),
         loginAs: (id) => {
           const rec = state.members.find((m) => m.id === id);
@@ -81,12 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (found) setStored({ ...found });
         },
         updateProfile: (patch) => {
-          setStored((u) => ({ ...u, ...patch }));
+          if (!stored) return;
+          setStored((u) => (u ? { ...u, ...patch } : u));
           actions.updateMemberProfile(user.id, patch);
         },
         logout: () => {
-          localStorage.removeItem(KEY);
-          setStored(DEMO_USERS.find((u) => u.id === 'u-mw')!);
+          setStored(null);
         }
       }}
     >
@@ -98,6 +115,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useAuth outside AuthProvider');
-  const perms = effectivePerms(ctx.user.roleId, ctx.user.extraPerms);
-  return { ...ctx, can: (p: Perm) => perms.has(p) };
+  return ctx;
 }

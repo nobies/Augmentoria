@@ -29,7 +29,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const { user, can } = useAuth();
   const state = useAppState();
   const guest = mode === 'guest';
-  const canComment = can('reviews.comment');
+  const canComment = guest || can('reviews.comment');
 
   const project = state.projects.find((p) => p.id === pid);
   const projectId = project?.id;

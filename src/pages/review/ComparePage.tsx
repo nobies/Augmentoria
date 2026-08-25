@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
 import { useAppState } from '../../lib/store';
 import { GoldMark } from '../../components/ui/bits';
+import NotFoundPage from '../NotFoundPage';
 
 type Mode = 'side' | 'wipe' | 'overlay';
 
@@ -89,14 +90,8 @@ export default function ComparePage() {
     wiping.current = false;
   };
 
-  if (!project) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
-        <Link to="/app/projects" className="text-sm text-accent hover:underline">
-          ← {t('nav_projects')}
-        </Link>
-      </div>
-    );
+  if (!project || !versions.includes(vA) || !versions.includes(vB)) {
+    return <NotFoundPage />;
   }
 
   const sel = 'rounded-lg border border-line bg-surface px-3 py-1.5 font-mono text-xs outline-none focus:border-accent';

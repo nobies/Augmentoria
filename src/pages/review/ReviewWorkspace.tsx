@@ -12,6 +12,7 @@ import type { Marker } from './Player';
 import OverlayLayer from './OverlayLayer';
 import CommentsPanel from './CommentsPanel';
 import type { LayerType } from '../../lib/store';
+import NotFoundPage from '../NotFoundPage';
 
 const COLORS = ['#FF4D4D', '#FFB020', '#4FD1C5', '#A78BFA', '#FB7185', '#34D399', '#FFFFFF'];
 const DRAFT = '__draft';
@@ -27,8 +28,11 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const { pid, v } = useParams();
   const { user, can } = useAuth();
   const state = useAppState();
+  const guest = mode === 'guest';
+  const canComment = can('reviews.comment');
 
-  const project = state.projects.find((p) => p.id === pid) ?? state.projects[0];
+  const project = state.projects.find((p) => p.id === pid);
+  const projectId = project?.id;
   const version = v ?? project?.currentVersion ?? 'V01';
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -48,11 +52,11 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
 
   const company = state.companies[0];
   useEffect(() => {
-    if (!isGuest()) return;
+    if (!guest) return;
     if (company?.brandColor) {
       document.documentElement.style.setProperty('--color-accent', company.brandColor);
     }
-  }, [company?.brandColor]);
+  }, [company?.brandColor, guest]);
 
   useEffect(() => {
     let url: string | null = null;
@@ -71,19 +75,15 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     };
   }, [project?.id, version]);
 
-  const canUploadVideo = !isGuest() && can('versions.upload');
+  const canUploadVideo = !guest && can('versions.upload');
 
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isGuest() || !can('reviews.comment') || !project) return;
-    const rec = actions.startSession(project.id, version, user.id);
+    if (guest || !canComment || !projectId) return;
+    const rec = actions.startSession(projectId, version, user.id);
     setSessionId(rec.id);
-  }, [project?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function isGuest() {
-    return mode === 'guest';
-  }
+  }, [canComment, guest, projectId, user.id, version]);
 
   const onUploadVideo = async (file: File) => {
     const url = URL.createObjectURL(file);
@@ -196,7 +196,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   };
 
   const canAnnotate = can('reviews.annotate');
-  const canPost = can('reviews.comment');
+  const canPost = canComment;
 
   const post = (payload: { kind: 'frame' | 'range'; tc: number; rangeEnd?: number; text: string }) => {
     if (!project) return;
@@ -215,14 +215,8 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     setTool('select');
   };
 
-  if (!project) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg text-ink">
-        <Link to="/app" className="text-sm text-accent hover:underline">
-          ← Home
-        </Link>
-      </div>
-    );
+  if (!project || !project.versions.some((row) => row.v === version)) {
+    return <NotFoundPage />;
   }
 
   const pickedAsset = videoAssets.find((a) => a.id === pickedAssetId) ?? videoAssets[0];
@@ -235,14 +229,14 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     <div className="flex h-screen flex-col bg-bg text-ink">
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-4 lg:px-5">
         <div className="flex min-w-0 items-center gap-3">
-          {!isGuest() && (
+          {!guest && (
             <Link to="/app/projects" className="rounded-full border border-line p-2 text-muted transition-colors hover:border-accent hover:text-accent">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rtl:rotate-180">
                 <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </Link>
           )}
-          {isGuest() && (
+          {guest && (
             company?.logoUrl ? (
               <img src={company.logoUrl} alt={company.name} className="h-7 object-contain" />
             ) : company?.name ? (
@@ -268,7 +262,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
                   </Link>
                 ))}
               </div>
-              {isGuest() && <span className="text-[10px] text-muted/50">· {t('rv_guest_mode')}</span>}
+              {guest && <span className="text-[10px] text-muted/50">· {t('rv_guest_mode')}</span>}
             </div>
           </div>
         </div>
@@ -303,7 +297,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
               {t('rv_demo_clip')}
             </span>
           )}
-          {!isGuest() && (
+          {!guest && (
             <div className="relative">
               <button
                 onClick={() => setExportOpen((o) => !o)}
@@ -361,7 +355,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
               )}
             </div>
           )}
-          {!isGuest() && (
+          {!guest && (
             <button
               onClick={() => {
                 void navigator.clipboard.writeText(shareUrl);
@@ -550,7 +544,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
         />
       </div>
 
-      {isGuest() && (
+      {guest && (
         <footer className="shrink-0 border-t border-line py-2 text-center text-[10px] tracking-widest text-muted/40 uppercase">
           {company?.tagline ?? (lang === 'ar' ? 'مراجعة فيديو احترافية' : 'Professional video review')}
           {' · '}

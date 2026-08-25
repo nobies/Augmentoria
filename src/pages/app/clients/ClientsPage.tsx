@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLang } from '../../../i18n';
-import { useEscape } from '../../../lib/useEscape';
 import { actions, clientLogoSrc, findClientByName, useAppState } from '../../../lib/store';
 import type { Client } from '../../../lib/store';
 import { FadeIn, LogoChip } from '../../../components/ui/bits';

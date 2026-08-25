@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useLang } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
 import { useAppState, STATUS_CLASS, STATUS_LABEL } from '../../lib/store';
 import type { ProjectStatus } from '../../lib/store';
 import { CountUp, FadeIn, LogoChip, brandColor } from '../../components/ui/bits';
 import { clientLogoUrl } from '../../lib/clients';
+import NewProjectModal from '../../components/NewProjectModal';
+import { useNavigate } from 'react-router-dom';
 
 const STAT_ICONS: Record<string, string> = {
   dash_stat_active: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z',
@@ -41,7 +44,9 @@ export function StatusBadge({ status }: { status: ProjectStatus }) {
 export default function DashboardPage() {
   const { t, lang } = useLang();
   const { user, can } = useAuth();
+  const navigate = useNavigate();
   const state = useAppState();
+  const [newOpen, setNewOpen] = useState(false);
   const memberMap = new Map(state.members.map((m) => [m.id, m]));
 
   const active = state.projects.filter((p) => p.status !== 'approved' && !p.archived);
@@ -75,7 +80,7 @@ export default function DashboardPage() {
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
-              onClick={() => (window.location.hash = '')}
+              onClick={() => setNewOpen(true)}
               className="rounded-full bg-accent px-6 py-2.5 text-sm font-bold text-bg transition-shadow duration-300 hover:shadow-[0_0_28px_rgba(var(--glow-rgb),0.4)]"
             >
               + {t('dash_new_project')}
@@ -252,6 +257,8 @@ export default function DashboardPage() {
           </FadeIn>
         </div>
       </div>
+
+      <AnimatePresence>{newOpen && <NewProjectModal creatorId={user.id} onClose={() => setNewOpen(false)} onCreated={(id) => navigate(`/app/projects/${id}`)} />}</AnimatePresence>
     </div>
   );
 }

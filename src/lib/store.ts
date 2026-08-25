@@ -57,6 +57,7 @@ export interface ReviewComment {
   resolved: boolean;
   createdAt: string;
   replies: CommentReply[];
+  originCommentId?: string;
 }
 
 export interface Project {
@@ -385,15 +386,30 @@ export const actions = {
     const prev = p.currentVersion;
     const num = parseInt(prev.replace(/\D/g, ''), 10) || 0;
     const nextV = `V${String(num + 1).padStart(2, '0')}`;
-    const carried = opts.carryOpen ? state.comments.filter((c) => c.projectId === projectId && c.version === prev && !c.resolved).length : 0;
-    if (opts.carryOpen) {
-      state = {
-        ...state,
-        comments: state.comments.map((c) =>
-          c.projectId === projectId && c.version === prev && !c.resolved ? { ...c, version: nextV } : c
-        )
-      };
-    }
+    const sourceComments = opts.carryOpen
+      ? state.comments.filter((c) => c.projectId === projectId && c.version === prev && !c.resolved)
+      : [];
+    const carried = sourceComments.length;
+    const createdAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const copiedComments = sourceComments.map((comment, index) => ({
+      ...comment,
+      id: `cm-${Date.now()}-${index}`,
+      version: nextV,
+      createdAt,
+      originCommentId: comment.originCommentId ?? comment.id,
+      replies: comment.replies.map((reply, replyIndex) => ({
+        ...reply,
+        id: `rp-${Date.now()}-${index}-${replyIndex}`
+      }))
+    }));
+    const commentIdMap = new Map(sourceComments.map((comment, index) => [comment.id, copiedComments[index].id]));
+    const copiedLayers = state.layers
+      .filter((layer) => commentIdMap.has(layer.commentId))
+      .map((layer, index) => ({
+        ...layer,
+        id: `ly-${Date.now()}-${index}`,
+        commentId: commentIdMap.get(layer.commentId)!
+      }));
     const row: VersionRow = {
       v: nextV,
       date: new Date().toISOString().slice(0, 10),
@@ -403,8 +419,10 @@ export const actions = {
     };
     state = {
       ...state,
+      comments: [...state.comments, ...copiedComments],
+      layers: [...state.layers, ...copiedLayers],
       projects: state.projects.map((x) =>
-        x.id === projectId ? { ...x, currentVersion: nextV, versions: [...x.versions, row] } : x
+        x.id === projectId ? { ...x, currentVersion: nextV, versions: [row, ...x.versions] } : x
       )
     };
     emit();

@@ -10,6 +10,7 @@ import { ROLE_KEY } from '../../lib/rbac';
 import { FadeIn, LogoChip } from '../../components/ui/bits';
 import { useProjectAssets, formatSize } from '../../lib/assets';
 import { StatusBadge } from './DashboardPage';
+import UploadVersionModal from '../../components/UploadVersionModal';
 
 const AVATAR_GRADIENTS = [
   'from-sky-400 to-blue-600',
@@ -32,6 +33,7 @@ export default function ProjectDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
+  const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
 
   if (!project) {
     return (
@@ -148,6 +150,7 @@ export default function ProjectDetailPage() {
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
+              onClick={() => setUploadVersionOpen(true)}
               className="flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-bold text-bg transition-shadow hover:shadow-[0_0_24px_rgba(var(--glow-rgb),0.35)]"
             >
               ↑ {t('prj_upload_version')}
@@ -408,6 +411,16 @@ export default function ProjectDetailPage() {
       <AnimatePresence>{editOpen && <EditModal project={project} onClose={() => setEditOpen(false)} onDeleted={() => navigate('/app/projects')} />}</AnimatePresence>
       <AnimatePresence>{addMemberOpen && <AddMemberModal projectId={project.id} existingIds={project.memberIds} onClose={() => setAddMemberOpen(false)} />}</AnimatePresence>
       <AnimatePresence>{newVersionOpen && <NewVersionModal projectId={project.id} prevVersion={project.currentVersion} openNotes={latest?.open ?? 0} onClose={() => setNewVersionOpen(false)} />}</AnimatePresence>
+      <AnimatePresence>
+        {uploadVersionOpen && (
+          <UploadVersionModal
+            projectId={project.id}
+            prevVersion={project.currentVersion}
+            openNotes={state.comments.filter((comment) => comment.projectId === project.id && comment.version === project.currentVersion && !comment.resolved).length}
+            onClose={() => setUploadVersionOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

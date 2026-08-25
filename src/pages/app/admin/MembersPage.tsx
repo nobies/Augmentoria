@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLang } from '../../../i18n';
-import { useEscape } from '../../../lib/useEscape';
 import { actions, useAppState } from '../../../lib/store';
 import type { MemberRecord } from '../../../lib/store';
 import { ALL_PERMS, ROLE_KEY, ROLE_PERMS } from '../../../lib/rbac';

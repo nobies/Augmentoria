@@ -48,13 +48,21 @@ test('unknown app and public review routes show 404 instead of another project',
   await expect(page.getByText(/Page not found|الصفحة غير موجودة/i)).toBeVisible();
 });
 
-test.fixme('mobile review keeps the video visible above a collapsible comments drawer', async ({ page }) => {
+test('mobile review keeps the video visible above a collapsible comments drawer', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/review/p-vodafone/V04');
 
   const video = page.locator('video');
   await expect(video).toBeVisible();
   expect((await video.boundingBox())?.height ?? 0).toBeGreaterThan(180);
+
+  const commentsButton = page.getByRole('button', { name: /^(💬 )?(Comments|التعليقات)/i });
+  await expect(commentsButton).toBeVisible();
+  await commentsButton.click();
+  await expect(page.locator('#review-comments')).toBeInViewport();
+
+  await page.getByRole('button', { name: /Close comments|إغلاق التعليقات/i }).last().click();
+  await expect(commentsButton).toBeVisible();
 });
 
 test('anonymous users are redirected away from the internal app and returned after login', async ({ page }) => {

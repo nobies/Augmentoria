@@ -46,6 +46,8 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const [aspect, setAspect] = useState(16 / 9);
   const [draftRange, setDraftRange] = useState<{ tc: number; rangeEnd?: number } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [annotationToolsOpen, setAnnotationToolsOpen] = useState(false);
   const { assets } = useProjectAssets(project?.id);
   const videoAssets = useMemo(() => assets.filter((a) => a.isVideo), [assets]);
   const [pickedAssetId, setPickedAssetId] = useState<string | null>(null);
@@ -193,9 +195,10 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const onMarkerClick = (m: Marker) => {
     seek(m.tc);
     setActiveId(m.id);
+    setCommentsOpen(true);
   };
 
-  const canAnnotate = can('reviews.annotate');
+  const canAnnotate = guest || can('reviews.annotate');
   const canPost = canComment;
 
   const post = (payload: { kind: 'frame' | 'range'; tc: number; rangeEnd?: number; text: string }) => {
@@ -226,9 +229,9 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const shareUrl = `${window.location.origin}/review/${project.id}/${version}`;
 
   return (
-    <div className="flex h-screen flex-col bg-bg text-ink">
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-4 lg:px-5">
-        <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-[100dvh] overflow-hidden flex-col bg-bg text-ink">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-line px-2 sm:px-4 lg:px-5">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {!guest && (
             <Link to="/app/projects" className="rounded-full border border-line p-2 text-muted transition-colors hover:border-accent hover:text-accent">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rtl:rotate-180">
@@ -238,7 +241,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
           )}
           {guest && (
             company?.logoUrl ? (
-              <img src={company.logoUrl} alt={company.name} className="h-7 object-contain" />
+              <img src={company.logoUrl} alt={company.name} className="h-6 max-w-20 shrink-0 object-contain sm:h-7 sm:max-w-none" />
             ) : company?.name ? (
               <span className="font-display text-sm font-black tracking-[0.2em]">{company.name}</span>
             ) : (
@@ -253,8 +256,10 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
                 {project.versions.map((ver) => (
                   <Link
                     key={ver.v}
-                    to={`/studio/review/${project.id}/${ver.v}`}
+                    to={`/${guest ? 'review' : 'studio/review'}/${project.id}/${ver.v}`}
                     className={`rounded px-1.5 py-0.5 font-mono text-[9px] font-bold transition-colors ${
+                      ver.v !== version ? 'max-sm:hidden' : ''
+                    } ${
                       ver.v === version ? 'bg-accent/15 text-accent' : 'text-muted/60 hover:text-accent'
                     }`}
                   >
@@ -262,7 +267,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
                   </Link>
                 ))}
               </div>
-              {guest && <span className="text-[10px] text-muted/50">· {t('rv_guest_mode')}</span>}
+              {guest && <span className="hidden text-[10px] text-muted/50 sm:inline">· {t('rv_guest_mode')}</span>}
             </div>
           </div>
         </div>
@@ -407,8 +412,8 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 max-lg:flex-col">
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-4 lg:p-5">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 sm:gap-3 sm:p-4 lg:p-5">
           <div className="relative flex min-h-0 flex-1">
             <Player
               src={src}
@@ -438,6 +443,8 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
           {canAnnotate && (
             <div
               className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors ${
+                tool === 'select' && !annotationToolsOpen ? 'max-lg:hidden' : ''
+              } ${
                 tool !== 'select' ? 'border-accent/50 bg-accent/[0.04]' : 'border-line bg-surface'
               }`}
             >
@@ -456,7 +463,10 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
                   ).map(([tl, path]) => (
                     <button
                       key={tl}
-                      onClick={() => setTool(tl)}
+                      onClick={() => {
+                        setTool(tl);
+                        setAnnotationToolsOpen(false);
+                      }}
                       title={t(`rv_tool_${tl}` as never)}
                       className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-muted transition-all hover:border-accent hover:text-accent"
                     >
@@ -521,7 +531,39 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
               )}
             </div>
           )}
+
+          {tool === 'select' && !annotationToolsOpen && (
+            <div className="flex shrink-0 gap-2 lg:hidden">
+              {canAnnotate && (
+                <button
+                  type="button"
+                  onClick={() => setAnnotationToolsOpen(true)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-xs font-bold text-muted"
+                >
+                  ✏ {t('rv_annotate')}
+                </button>
+              )}
+              <button
+                type="button"
+                aria-controls="review-comments"
+                aria-expanded={commentsOpen}
+                onClick={() => setCommentsOpen(true)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-surface px-4 py-3 text-xs font-bold text-accent"
+              >
+                💬 {t('rv_comments')} <span className="rounded-full bg-accent/15 px-1.5 py-0.5">{comments.length}</span>
+              </button>
+            </div>
+          )}
         </main>
+
+        {commentsOpen && (
+          <button
+            type="button"
+            aria-label={t('rv_close_comments')}
+            onClick={() => setCommentsOpen(false)}
+            className="absolute inset-0 z-30 bg-black/55 backdrop-blur-[1px] lg:hidden"
+          />
+        )}
 
         <CommentsPanel
           comments={comments}
@@ -541,6 +583,8 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
           onRemoveDraftLayer={actions.deleteLayer}
           onToggleDraftLayer={(id, visible) => actions.updateLayer(id, { visible })}
           layerCounts={layerCounts}
+          mobileOpen={commentsOpen}
+          onMobileClose={() => setCommentsOpen(false)}
         />
       </div>
 

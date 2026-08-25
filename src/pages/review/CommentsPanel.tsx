@@ -27,6 +27,8 @@ interface Props {
   onRemoveDraftLayer: (id: string) => void;
   onToggleDraftLayer: (id: string, visible: boolean) => void;
   layerCounts: Record<string, number>;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
 type F = 'all' | 'open' | 'resolved';
@@ -82,7 +84,23 @@ export default function CommentsPanel(p: Props) {
   const inputCls = 'w-full rounded-lg border border-line bg-bg px-3.5 py-2.5 text-sm outline-none focus:border-accent';
 
   return (
-    <div className="flex h-full min-h-0 w-[350px] shrink-0 flex-col border-s border-line bg-surface max-xl:w-[300px]">
+    <aside
+      id="review-comments"
+      className={`flex h-full min-h-0 w-[350px] shrink-0 flex-col border-s border-line bg-surface max-xl:w-[300px] max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[min(62vh,32rem)] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-s-0 max-lg:border-t max-lg:shadow-2xl max-lg:transition-transform max-lg:duration-300 ${
+        p.mobileOpen ? 'max-lg:visible max-lg:translate-y-0' : 'max-lg:invisible max-lg:pointer-events-none max-lg:translate-y-full'
+      }`}
+    >
+      <div className="hidden items-center justify-center border-b border-line py-2 max-lg:flex">
+        <span className="h-1 w-10 rounded-full bg-line" />
+        <button
+          type="button"
+          onClick={p.onMobileClose}
+          aria-label={t('rv_close_comments')}
+          className="absolute end-3 top-1 rounded-full p-2 text-lg text-muted transition-colors hover:text-ink"
+        >
+          ×
+        </button>
+      </div>
       <div className="flex items-center gap-1.5 border-b border-line px-4 py-3">
         {(['all', 'open', 'resolved'] as F[]).map((f) => (
           <button
@@ -344,6 +362,6 @@ export default function CommentsPanel(p: Props) {
           </div>
         </div>
       )}
-    </div>
+    </aside>
   );
 }

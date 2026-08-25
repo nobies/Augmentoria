@@ -13,6 +13,7 @@ import OverlayLayer from './OverlayLayer';
 import CommentsPanel from './CommentsPanel';
 import type { LayerType } from '../../lib/store';
 import NotFoundPage from '../NotFoundPage';
+import { FREEFRAME_REVIEW_ENABLED, proReviewPath } from '../../lib/freeframe';
 
 const COLORS = ['#FF4D4D', '#FFB020', '#4FD1C5', '#A78BFA', '#FB7185', '#34D399', '#FFFFFF'];
 const DRAFT = '__draft';
@@ -394,6 +395,11 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
               className="rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent hover:text-accent"
             >
               ✂ {lang === 'ar' ? 'المونتاج' : 'Editor'}
+            </Link>
+          )}
+          {!guest && FREEFRAME_REVIEW_ENABLED && (
+            <Link to={proReviewPath(project.id, version)} className="rounded-full border border-fuchsia-400/45 bg-fuchsia-400/5 px-3.5 py-1.5 text-xs font-bold text-fuchsia-300 transition-colors hover:bg-fuchsia-400/10">
+              ◈ Pro Review
             </Link>
           )}
           {usingDemo && (

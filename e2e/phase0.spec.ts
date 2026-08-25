@@ -299,3 +299,20 @@ test('project sessions tab starts a live review on the selected version', async 
   await expect(page).toHaveURL('/studio/review/p-vodafone/V03');
   await expect(page.getByRole('button', { name: /End session|إنهاء الجلسة/i })).toBeVisible();
 });
+
+test('project exposes isolated Pro Review without replacing legacy review', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/app/projects/p-vodafone');
+  await page.getByRole('button', { name: /Versions|النسخ/i }).click();
+
+  const proReview = page.getByRole('link', { name: /Pro Review/i }).first();
+  await expect(proReview).toBeVisible();
+  await proReview.click();
+
+  await expect(page).toHaveURL('/studio/pro-review/p-vodafone/V04');
+  await expect(page.getByText('Augmentoria Pro Review · FreeFrame Engine')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Legacy review/i })).toHaveAttribute(
+    'href',
+    '/studio/review/p-vodafone/V04',
+  );
+});

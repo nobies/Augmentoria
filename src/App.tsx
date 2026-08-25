@@ -21,6 +21,7 @@ const ReviewsPage = lazy(() => import('./pages/review/ReviewsPage'));
 const ReviewWorkspace = lazy(() => import('./pages/review/ReviewWorkspace'));
 const ComparePage = lazy(() => import('./pages/review/ComparePage'));
 const VideoEditorPage = lazy(() => import('./pages/editor/VideoEditorPage'));
+const ProReviewBridge = lazy(() => import('./pages/review/ProReviewBridge'));
 const SettingsPage = lazy(() => import('./pages/app/SettingsPage'));
 const CompaniesPage = lazy(() => import('./pages/app/admin/CompaniesPage'));
 const MembersPage = lazy(() => import('./pages/app/admin/MembersPage'));
@@ -76,6 +77,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <VideoEditorPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/studio/pro-review/:pid/:v"
+            element={
+              <RequireAuth>
+                <ProReviewBridge />
               </RequireAuth>
             }
           />

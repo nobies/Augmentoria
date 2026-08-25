@@ -11,6 +11,7 @@ import { FadeIn, LogoChip } from '../../components/ui/bits';
 import { useProjectAssets, formatSize } from '../../lib/assets';
 import { StatusBadge } from './DashboardPage';
 import UploadVersionModal from '../../components/UploadVersionModal';
+import { FREEFRAME_REVIEW_ENABLED, proReviewPath } from '../../lib/freeframe';
 
 const AVATAR_GRADIENTS = [
   'from-sky-400 to-blue-600',
@@ -262,7 +263,7 @@ export default function ProjectDetailPage() {
                   </td>
                   <td className="hidden px-5 py-3.5 tabular-nums text-muted sm:table-cell">{v.resolved}</td>
                   <td className="px-5 py-3.5 text-end">
-                    <div className="inline-flex items-center gap-1.5 opacity-0 transition-all group-hover:opacity-100">
+                    <div className="inline-flex items-center gap-1.5 opacity-100 transition-all md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                       {v.v !== project.currentVersion && (
                         <Link
                           to={`/studio/compare/${project.id}/${v.v}/${project.currentVersion}`}
@@ -281,6 +282,14 @@ export default function ProjectDetailPage() {
                           <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </Link>
+                      {FREEFRAME_REVIEW_ENABLED && (
+                        <Link
+                          to={proReviewPath(project.id, v.v)}
+                          className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/45 bg-fuchsia-400/5 px-3.5 py-1.5 text-xs font-bold text-fuchsia-300 transition-colors hover:bg-fuchsia-400/10"
+                        >
+                          ◈ Pro Review
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </motion.tr>

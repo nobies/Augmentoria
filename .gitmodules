@@ -1,0 +1,4 @@
+[submodule "services/freeframe"]
+	path = services/freeframe
+	url = https://github.com/Techiebutler/freeframe.git
+	branch = stable

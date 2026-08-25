@@ -13,7 +13,13 @@
     "check": "npm run lint && npm run test && npm run build",
     "check:all": "npm run check && npm run test:e2e",
     "preview": "vite preview",
-    "images": "node scripts/generate-images.mjs"
+    "images": "node scripts/generate-images.mjs",
+    "review:engine:setup": "node scripts/setup-freeframe.mjs",
+    "review:engine:up": "npm run review:engine:setup && docker compose -f services/freeframe/docker-compose.dev.yml -f config/freeframe.compose.yml up -d postgres redis minio minio-init api worker web",
+    "review:engine:build": "npm run review:engine:setup && docker compose -f services/freeframe/docker-compose.dev.yml -f config/freeframe.compose.yml up -d --build postgres redis minio minio-init api worker web",
+    "review:engine:status": "docker compose -f services/freeframe/docker-compose.dev.yml -f config/freeframe.compose.yml ps",
+    "review:engine:logs": "docker compose -f services/freeframe/docker-compose.dev.yml -f config/freeframe.compose.yml logs -f api worker web",
+    "review:engine:down": "docker compose -f services/freeframe/docker-compose.dev.yml -f config/freeframe.compose.yml down"
   },
   "dependencies": {
     "framer-motion": "^12.23.0",

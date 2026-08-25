@@ -1,0 +1,5 @@
+services:
+  web:
+    healthcheck:
+      # Alpine resolves localhost to IPv6 first, while Next dev binds IPv4 here.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]

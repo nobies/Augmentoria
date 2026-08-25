@@ -77,6 +77,13 @@ export function ReportView() {
   const clientRec = state.clients.find((c) => c.id === project?.clientId || c.name === project?.client);
   const company = state.companies[0];
   const version = v ?? project?.currentVersion ?? 'V01';
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [authorFilter, setAuthorFilter] = useState('all');
+  const [includeReplies, setIncludeReplies] = useState(true);
+  const [includeDrawings, setIncludeDrawings] = useState(true);
+  const [includeThumbnails, setIncludeThumbnails] = useState(true);
+  const [includeApproval, setIncludeApproval] = useState(true);
+  const [includeSessions, setIncludeSessions] = useState(true);
 
   if (!project) {
     return (
@@ -89,12 +96,28 @@ export function ReportView() {
   }
 
   const memberMap = new Map(state.members.map((m) => [m.id, m]));
-  const comments = state.comments
+  const allComments = state.comments
     .filter((c) => c.projectId === project.id && c.version === version)
     .sort((a, b) => a.tc - b.tc);
+  const comments = allComments.filter(
+    (comment) =>
+      (statusFilter === 'all' || (statusFilter === 'resolved' ? comment.resolved : !comment.resolved)) &&
+      (authorFilter === 'all' || comment.authorId === authorFilter)
+  );
+  const reportAuthors = [...new Set(allComments.map((comment) => comment.authorId))];
   const layersBy = (cid: string) => state.layers.filter((l) => l.commentId === cid);
   const resolved = comments.filter((c) => c.resolved).length;
+  const decisions = state.approvals.filter((item) => item.projectId === project.id && item.version === version);
+  const sessions = state.sessions.filter((session) => session.projectId === project.id && session.version === version);
+  const versionRow = project.versions.find((item) => item.v === version);
   const fmtTc = (t: number) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}:${String(Math.floor((t % 1) * 25)).padStart(2, '0')}`;
+  const reportToggles = [
+    { label: 'Replies', checked: includeReplies, setChecked: setIncludeReplies },
+    { label: 'Drawings', checked: includeDrawings, setChecked: setIncludeDrawings },
+    { label: 'Thumbnails', checked: includeThumbnails, setChecked: setIncludeThumbnails },
+    { label: 'Approval', checked: includeApproval, setChecked: setIncludeApproval },
+    { label: 'Sessions', checked: includeSessions, setChecked: setIncludeSessions }
+  ];
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -109,27 +132,64 @@ export function ReportView() {
           <button
             onClick={() =>
               exportCommentsCSV(
-                comments.map((c) => ({ ...c, layerCount: layersBy(c.id).length })),
+                comments.map((c) => ({ ...c, replies: includeReplies ? c.replies : [], layerCount: includeDrawings ? layersBy(c.id).length : 0 })),
                 (id) => memberMap.get(id)?.name ?? 'Guest',
                 `${project.client}-${project.name}-${version}`
               )
             }
-            className="rounded-full border border-line px-4 py-2 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+            disabled={!can('reports.export')}
+            className="rounded-full border border-line px-4 py-2 text-xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-40"
           >
             📊 CSV
           </button>
           <button
             onClick={() =>
               exportSessionJSON(
-                { project: { id: project.id, name: project.name }, version, exportedAt: new Date().toISOString(), comments, layers: state.layers.filter((l) => comments.some((c) => c.id === l.commentId)) },
+                {
+                  project: { id: project.id, name: project.name },
+                  version,
+                  exportedAt: new Date().toISOString(),
+                  comments: comments.map((comment) => (includeReplies ? comment : { ...comment, replies: [] })),
+                  layers: includeDrawings ? state.layers.filter((l) => comments.some((c) => c.id === l.commentId)) : [],
+                  approvals: includeApproval ? decisions : [],
+                  sessions: includeSessions ? sessions : []
+                },
                 `${project.client}-${project.name}-${version}`
               )
             }
-            className="rounded-full border border-line px-4 py-2 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+            disabled={!can('reports.export')}
+            className="rounded-full border border-line px-4 py-2 text-xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-40"
           >
             🗂 JSON
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3 print:hidden">
+        <span className="text-[10px] font-bold tracking-widest text-muted uppercase">Report filters</span>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | 'open' | 'resolved')} className="rounded-lg border border-line bg-bg px-3 py-1.5 text-xs outline-none focus:border-accent">
+          <option value="all">All statuses</option>
+          <option value="open">Open</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <select value={authorFilter} onChange={(event) => setAuthorFilter(event.target.value)} className="rounded-lg border border-line bg-bg px-3 py-1.5 text-xs outline-none focus:border-accent">
+          <option value="all">All reviewers</option>
+          {reportAuthors.map((authorId) => (
+            <option key={authorId} value={authorId}>{memberMap.get(authorId)?.name ?? 'Guest'}</option>
+          ))}
+        </select>
+        {reportToggles.map(({ label, checked, setChecked }) => (
+          <label key={label} className="flex items-center gap-1.5 text-[10px] text-muted">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(event) => setChecked(event.target.checked)}
+              className="accent-accent"
+            />
+            {label}
+          </label>
+        ))}
+        <span className="ms-auto text-[10px] text-muted">{comments.length} / {allComments.length} comments</span>
       </div>
 
       <div id="report-sheet" className="rounded-2xl border border-line bg-white p-8 text-black shadow-xl print:rounded-none print:border-0 print:shadow-none lg:p-12">
@@ -155,6 +215,58 @@ export function ReportView() {
           <Stat label="Versions" value={`${project.currentVersion} · ${project.versions.length}`} />
         </div>
 
+        {includeApproval && <section className="border-b border-black/10 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-bold tracking-[0.25em] text-black/40 uppercase">Approval status</p>
+            <span
+              className={`rounded-full border px-3 py-1 text-[9px] font-black uppercase ${
+                versionRow?.status === 'approved'
+                  ? 'border-emerald-600/30 bg-emerald-50 text-emerald-700'
+                  : versionRow?.status === 'changes'
+                    ? 'border-orange-500/30 bg-orange-50 text-orange-700'
+                    : 'border-black/15 text-black/50'
+              }`}
+            >
+              {versionRow?.status ?? 'review'}
+            </span>
+          </div>
+          {decisions.length === 0 ? (
+            <p className="mt-3 text-xs text-black/45">No approval decision has been recorded for this version.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {decisions.map((decision) => (
+                <div key={decision.id} className="rounded-lg border border-black/10 bg-black/[0.025] px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <b>{decision.decision === 'approved' ? 'Approved' : 'Changes requested'}</b>
+                    <span className="text-black/50">by {memberMap.get(decision.actorId)?.name ?? 'Client'}</span>
+                    {decision.commentCount !== undefined && <span className="text-black/50">{decision.commentCount} comments · {decision.resolvedCount ?? 0} resolved</span>}
+                    <span className="ms-auto font-mono text-[9px] text-black/40">{decision.createdAt}</span>
+                  </div>
+                  {decision.note && <p className="mt-1 text-black/65">{decision.note}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>}
+
+        {includeSessions && <section className="border-b border-black/10 py-5">
+          <p className="text-[10px] font-bold tracking-[0.25em] text-black/40 uppercase">Live review sessions</p>
+          {sessions.length === 0 ? (
+            <p className="mt-3 text-xs text-black/45">No live review session has been recorded for this version.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {sessions.map((session) => (
+                <div key={session.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-[10px]">
+                  <b>{session.endedAt ? 'Completed' : 'Live now'}</b>
+                  <span className="text-black/50">Host: {memberMap.get(session.hostId)?.name ?? 'Reviewer'}</span>
+                  <span className="text-black/50">Participants: {session.participants.length}</span>
+                  <span className="ms-auto font-mono text-black/40">{session.startedAt}{session.endedAt ? ` → ${session.endedAt}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>}
+
         <div className="space-y-6 py-6">
           <p className="text-[10px] font-bold tracking-[0.25em] text-black/40 uppercase">{t('rv_all')} — {comments.length}</p>
 
@@ -167,14 +279,16 @@ export function ReportView() {
               <article key={c.id} className="grid grid-cols-[220px_1fr] gap-5 border-b border-black/10 pb-6">
                 <div>
                   <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-black/15 bg-black">
-                    {c.thumb ? (
-                      <img src={c.thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                    ) : project.thumbnail ? (
-                      <img src={project.thumbnail} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
-                    ) : null}
-                    <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1280 720" preserveAspectRatio="none">
+                    {includeThumbnails
+                      ? c.thumb
+                        ? <img src={c.thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                        : project.thumbnail
+                          ? <img src={project.thumbnail} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
+                          : null
+                      : null}
+                    {includeDrawings && <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1280 720" preserveAspectRatio="none">
                       {layers.filter((l) => l.visible).map((l) => (
-                        <g key={l.id}>
+                        <g key={l.id} opacity={l.opacity ?? 0.95} transform={reportLayerTransform(l)}>
                           {l.type === 'pen' && l.pts && <polyline points={l.pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={l.color} strokeWidth={5} strokeLinecap="round" />}
                           {l.type === 'arrow' && l.w !== undefined && l.h !== undefined && l.x !== undefined && l.y !== undefined && (
                             <g>
@@ -189,11 +303,14 @@ export function ReportView() {
                             <rect x={l.x} y={l.y} width={l.w} height={l.h} fill="none" stroke={l.color} strokeWidth={6} />
                           )}
                           {l.type === 'text' && l.text && l.x !== undefined && l.y !== undefined && (
-                            <text x={l.x} y={l.y} fill={l.color} fontSize={34} fontWeight={700}>{l.text}</text>
+                            <text x={l.x} y={l.y} fill={l.color} fontSize={l.fs} fontWeight={700}>{l.text}</text>
+                          )}
+                          {l.type === 'image' && l.src && l.x !== undefined && l.y !== undefined && l.w && l.h && (
+                            <image href={l.src} x={l.x} y={l.y} width={l.w} height={l.h} preserveAspectRatio="xMidYMid meet" />
                           )}
                         </g>
                       ))}
-                    </svg>
+                    </svg>}
                   </div>
                   <p className="mt-2 text-center font-mono text-[10px] text-black/50">
                     {fmtTc(c.tc)}{c.rangeEnd !== undefined ? ` → ${fmtTc(c.rangeEnd)}` : ''} · {c.kind}
@@ -212,12 +329,12 @@ export function ReportView() {
                     <span className="ms-auto text-[10px] text-black/40">{c.createdAt}</span>
                   </div>
                   <p className="mt-2 text-sm leading-relaxed">{c.text}</p>
-                  {layers.length > 0 && (
+                  {includeDrawings && layers.length > 0 && (
                     <p className="mt-1.5 text-[10px] text-black/45">
                       ✎ {layers.length} annotation layer(s): {layers.map((l) => l.type).join(', ')}
                     </p>
                   )}
-                  {c.replies.map((r) => (
+                  {includeReplies && c.replies.map((r) => (
                     <div key={r.id} className="mt-2 border-s-2 border-black/15 ps-3">
                       <p className="text-[11px] text-black/70">
                         <b>{memberMap.get(r.authorId)?.name ?? 'Guest'}</b> · {r.at}
@@ -240,6 +357,13 @@ export function ReportView() {
       </div>
     </div>
   );
+}
+
+function reportLayerTransform(layer: import('../../lib/store').AnnotationLayer) {
+  if (!layer.rotation) return undefined;
+  const cx = (layer.x ?? 0) + (layer.w ?? 0) / 2;
+  const cy = (layer.y ?? 0) + (layer.h ?? 0) / 2;
+  return `rotate(${layer.rotation} ${cx} ${cy})`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

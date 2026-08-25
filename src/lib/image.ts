@@ -16,7 +16,8 @@ export function fileToDataUrl(file: File, maxPx = 256, quality = 0.85): Promise<
           return;
         }
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        const outputType = file.type === 'image/jpeg' || file.type === 'image/jpg' ? 'image/jpeg' : 'image/png';
+        resolve(canvas.toDataURL(outputType, outputType === 'image/jpeg' ? quality : undefined));
       };
       img.onerror = () => reject(new Error('bad image'));
       img.src = reader.result as string;

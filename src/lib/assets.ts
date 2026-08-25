@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { idb } from './idb';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AssetRecord } from './idb';
+import { mediaStorage } from './mediaStorage';
 
 export interface ProjectAsset extends AssetRecord {
   url: string;
@@ -25,19 +25,19 @@ function decorateOne(r: AssetRecord): ProjectAsset {
 
 export function useProjectAssets(projectId: string | undefined) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
+  const urlsRef = useRef<string[]>([]);
+  const refreshIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
+    const refreshId = ++refreshIdRef.current;
     try {
-      const recs = await idb.all<AssetRecord>('assets');
-      if (projectId) {
-        setAssets(
-          recs
-            .filter((r) => r.projectId === projectId)
-            .sort((a, b) => b.createdAt - a.createdAt)
-            .map(decorateOne)
-        );
-      }
+      const recs = await mediaStorage.listProjectAssets(projectId);
+      if (refreshId !== refreshIdRef.current) return;
+      const decorated = recs.map(decorateOne);
+      urlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      urlsRef.current = decorated.map((asset) => asset.url);
+      setAssets(decorated);
     } catch (err) {
       console.error('[assets] load failed', err);
     }
@@ -45,6 +45,11 @@ export function useProjectAssets(projectId: string | undefined) {
 
   useEffect(() => {
     void refresh();
+    return () => {
+      refreshIdRef.current += 1;
+      urlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      urlsRef.current = [];
+    };
   }, [refresh]);
 
   const add = useCallback(
@@ -52,7 +57,7 @@ export function useProjectAssets(projectId: string | undefined) {
       if (!projectId) return;
       try {
         for (const file of Array.from(files)) {
-          await idb.put('assets', {
+          await mediaStorage.saveAsset({
             id: `as-${Date.now()}-${Math.round(Math.random() * 999)}`,
             projectId,
             name: file.name,
@@ -73,10 +78,13 @@ export function useProjectAssets(projectId: string | undefined) {
   const remove = useCallback(
     async (id: string) => {
       try {
-        await idb.del('assets', id);
+        await mediaStorage.deleteAsset(id);
         setAssets((prev) => {
           const target = prev.find((p) => p.id === id);
-          if (target) URL.revokeObjectURL(target.url);
+          if (target) {
+            URL.revokeObjectURL(target.url);
+            urlsRef.current = urlsRef.current.filter((url) => url !== target.url);
+          }
           return prev.filter((p) => p.id !== id);
         });
       } catch (err) {
@@ -89,10 +97,9 @@ export function useProjectAssets(projectId: string | undefined) {
   const updateNote = useCallback(
     async (id: string, note: string) => {
       try {
-        const recs = await idb.all<AssetRecord>('assets');
-        const rec = recs.find((r) => r.id === id);
+        const rec = await mediaStorage.getAsset(id);
         if (!rec) return;
-        await idb.put('assets', { ...rec, note });
+        await mediaStorage.saveAsset({ ...rec, note });
         setAssets((prev) => prev.map((p) => (p.id === id ? { ...p, note } : p)));
       } catch (err) {
         console.error('[assets] note failed', err);

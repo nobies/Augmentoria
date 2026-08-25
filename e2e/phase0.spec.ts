@@ -74,6 +74,34 @@ test('mobile review keeps the video visible above a collapsible comments drawer'
   await expect(commentsButton).toBeVisible();
 });
 
+test('landscape review prioritizes the video and tablet comments can collapse', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto('/review/p-vodafone/V04');
+  const video = page.locator('video');
+  await expect(video).toBeVisible();
+  expect((await video.boundingBox())?.height ?? 0).toBeGreaterThan(200);
+  await expect(page.getByRole('button', { name: 'Fullscreen' })).toBeVisible();
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const panelToggle = page.locator('button[aria-controls="review-comments"]').first();
+  await expect(panelToggle).toBeVisible();
+  await expect(page.locator('#review-comments')).toBeVisible();
+  await panelToggle.click();
+  await expect(page.locator('#review-comments')).toBeHidden();
+  await panelToggle.click();
+  await expect(page.locator('#review-comments')).toBeVisible();
+});
+
+test('public review links can decide on a version without gaining moderation rights', async ({ page }) => {
+  await page.goto('/review/p-vodafone/V04');
+  await expect(page.getByTitle(/Resolve|Unresolve|حل|إعادة فتح/i)).toHaveCount(0);
+  await page.getByRole('button', { name: /Approve version|اعتماد النسخة/i }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByPlaceholder(/Decision note|ملاحظة القرار/i).fill('Approved from the client link.');
+  await dialog.getByRole('button', { name: /Confirm approval|تأكيد الاعتماد/i }).click();
+  await expect(page.getByText(/^Approved$|^تم الاعتماد$/i).first()).toBeVisible();
+});
+
 test('anonymous users are redirected away from the internal app and returned after login', async ({ page }) => {
   await page.goto('/app/projects/p-vodafone');
   await expect(page).toHaveURL(/\/login$/);
@@ -101,10 +129,55 @@ test('review player pointer controls remain clickable and text annotations persi
   await expect(textInput).toBeFocused();
   await textInput.fill('Text annotation works');
   await textInput.press('Enter');
-  await expect(page.locator('svg text').filter({ hasText: 'Text annotation works' })).toBeVisible();
+  const renderedText = page.locator('svg text').filter({ hasText: 'Text annotation works' });
+  await expect(renderedText).toBeVisible();
+  await page.getByRole('button', { name: /1\. text.*Text annotation works/i }).click();
+  await page.getByLabel('Opacity').fill('0.5');
+  await page.getByLabel('Rotation').fill('30');
+  const layerGroup = renderedText.locator('..');
+  await expect(layerGroup).toHaveAttribute('opacity', '0.5');
+  await expect(layerGroup).toHaveAttribute('transform', /rotate\(30 /);
+
+  await page.getByText('Music is too loud under the VO here.').click();
+  await expect(page.getByTestId('review-overlay').locator('polyline')).toBeVisible();
+  await video.evaluate((element) => {
+    const media = element as HTMLVideoElement;
+    media.currentTime = 20;
+    media.dispatchEvent(new Event('timeupdate'));
+  });
+  await expect(page.getByTestId('review-overlay').locator('polyline')).toHaveCount(0);
 });
 
-test('client reviewers can comment without moderation, sharing, export, or session controls', async ({ page }) => {
+test('live review starts on demand and synchronizes the playhead across tabs', async ({ page, context }) => {
+  await authenticate(page);
+  await page.goto('/studio/review/p-vodafone/V04');
+  const startLive = page.getByRole('button', { name: /Start Live|ابدأ Live/i });
+  await expect(startLive).toBeVisible();
+  await startLive.click();
+  await expect(page.getByRole('button', { name: /End session|إنهاء الجلسة/i })).toBeVisible();
+
+  const client = await context.newPage();
+  await authenticate(client, CLIENT_USER);
+  await client.goto('/studio/review/p-vodafone/V04');
+  await client.getByRole('button', { name: /Request control|طلب التحكم/i }).click();
+  await expect(page.getByRole('button', { name: /Accept .*control request|قبول تحكم/i })).toBeVisible();
+  await page.getByRole('button', { name: /Accept .*control request|قبول تحكم/i }).click();
+  await expect(client.getByText(/You have control|أنت متحكم/i)).toBeVisible();
+
+  const hostVideo = page.locator('video');
+  const clientVideo = client.locator('video');
+  await expect.poll(() => hostVideo.evaluate((element) => (element as HTMLVideoElement).duration || 0)).toBeGreaterThan(0);
+  await expect.poll(() => clientVideo.evaluate((element) => (element as HTMLVideoElement).duration || 0)).toBeGreaterThan(0);
+  await clientVideo.evaluate((element) => {
+    (element as HTMLVideoElement).currentTime = 5;
+  });
+  await expect.poll(() => hostVideo.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(4.8);
+  await page.getByRole('button', { name: /Take control|استلم التحكم/i }).click();
+  await page.getByRole('button', { name: /End session|إنهاء الجلسة/i }).click();
+  await client.close();
+});
+
+test('client reviewers can comment without moderation, sharing, export, or session controls', async ({ page, context }) => {
   await authenticate(page, CLIENT_USER);
   await page.goto('/studio/review/p-vodafone/V04');
 
@@ -113,6 +186,31 @@ test('client reviewers can comment without moderation, sharing, export, or sessi
   await expect(page.getByRole('button', { name: /Export|تصدير/i })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Share|مشاركة/i })).toHaveCount(0);
   await expect(page.getByTitle(/End session|إنهاء الجلسة/i)).toHaveCount(0);
+
+  await page.getByRole('button', { name: /Request changes|طلب تعديلات/i }).click();
+  const dialog = page.getByRole('dialog');
+  const confirm = dialog.getByRole('button', { name: /Send change request|إرسال طلب التعديل/i });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByPlaceholder(/Decision note|ملاحظة القرار/i).fill('Please shorten the end card.');
+  await confirm.click();
+  await expect(page.getByText(/Changes requested|تعديلات مطلوبة/i).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Changes requested|تعديلات مطلوبة/i).first()).toBeVisible();
+  const manager = await context.newPage();
+  await authenticate(manager, DEMO_USER);
+  await manager.goto('/app/reports/p-vodafone/V04');
+  await expect(manager.getByText('Please shorten the end card.')).toBeVisible();
+  await expect(manager.getByText('Report filters')).toBeVisible();
+  await expect(manager.getByRole('button', { name: /Print|طباعة/i })).toBeEnabled();
+  await expect(manager.getByRole('button', { name: '📊 CSV' })).toBeEnabled();
+  await expect(manager.getByRole('button', { name: '🗂 JSON' })).toBeEnabled();
+  await manager.getByLabel('Approval').uncheck();
+  await expect(manager.getByText('Please shorten the end card.')).toHaveCount(0);
+  await manager.getByLabel('Approval').check();
+  await expect(manager.getByText('Please shorten the end card.')).toBeVisible();
+  await manager.getByLabel('Replies').uncheck();
+  await expect(manager.getByText('On it — will push to V05.')).toHaveCount(0);
+  await manager.close();
 });
 
 test('compare uses the independently stored video for each version and exposes Flicker mode', async ({ page }) => {
@@ -146,5 +244,8 @@ test('compare uses the independently stored video for each version and exposes F
   await expect.poll(async () => videos.nth(0).getAttribute('src')).toMatch(/^blob:/);
   await expect.poll(async () => videos.nth(1).getAttribute('src')).toMatch(/^blob:/);
   expect(await videos.nth(0).getAttribute('src')).not.toBe(await videos.nth(1).getAttribute('src'));
-  await expect(page.getByRole('button', { name: /Flicker|وميض/i })).toBeVisible();
+  const flicker = page.getByRole('button', { name: /Flicker|وميض/i });
+  await expect(flicker).toBeVisible();
+  await flicker.click();
+  await expect.poll(() => videos.nth(1).evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
 });

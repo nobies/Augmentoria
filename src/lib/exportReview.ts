@@ -50,6 +50,15 @@ export async function exportFramePNG(
 
   for (const l of layers) {
     if (!l.visible) continue;
+    ctx.save();
+    ctx.globalAlpha = l.opacity ?? 0.95;
+    if (l.rotation && l.x !== undefined && l.y !== undefined) {
+      const cx = l.x + (l.w ?? 0) / 2;
+      const cy = l.y + (l.h ?? 0) / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate((l.rotation * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+    }
     ctx.strokeStyle = l.color;
     ctx.fillStyle = l.color;
     ctx.lineWidth = l.sw * 1.6;
@@ -96,6 +105,7 @@ export async function exportFramePNG(
         img.src = l.src!;
       });
     }
+    ctx.restore();
   }
 
   await new Promise<void>((resolve) =>

@@ -61,7 +61,7 @@ function runTx<T>(collection: Collection, mode: IDBTransactionMode, fn: (store: 
 }
 
 export const idb = {
-  put: (c: Collection, rec: { id: string; blob?: Blob } & Record<string, unknown>) =>
+  put: <T extends { id: string; blob?: Blob }>(c: Collection, rec: T) =>
     runTx<IDBValidKey>(c, 'readwrite', (s) => s.put(rec as never)),
   all: <T = ImageRecord>(c: Collection) => runTx<T[]>(c, 'readonly', (s) => s.getAll()),
   get: <T = ImageRecord>(c: Collection, id: string) => runTx<T | undefined>(c, 'readonly', (s) => s.get(id)),

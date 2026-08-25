@@ -42,6 +42,8 @@ export interface AnnotationLayer {
   sw: number;
   fs: number;
   visible: boolean;
+  opacity?: number;
+  rotation?: number;
 }
 
 export interface ReviewComment {
@@ -84,6 +86,19 @@ export interface ReviewSession {
   startedAt: string;
   endedAt?: string;
   participants: string[];
+  controlRequests?: string[];
+}
+
+export interface ApprovalRecord {
+  id: string;
+  projectId: string;
+  version: string;
+  actorId: string;
+  decision: 'approved' | 'changes';
+  note?: string;
+  createdAt: string;
+  commentCount?: number;
+  resolvedCount?: number;
 }
 
 export interface Company {
@@ -128,9 +143,42 @@ export interface AppState {
   comments: ReviewComment[];
   layers: AnnotationLayer[];
   sessions: ReviewSession[];
+  approvals: ApprovalRecord[];
 }
 
 const KEY = 'augmentoria-state-v1';
+
+function localStamp(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function localDate(date = new Date()) {
+  return localStamp(date).slice(0, 10);
+}
+
+function localTime(date = new Date()) {
+  return localStamp(date).slice(11);
+}
+
+function activity(textEn: string, textAr: string): ActivityItem {
+  return { time: localTime(), textEn, textAr };
+}
+
+function syncVersionCounts(projects: Project[], comments: ReviewComment[]) {
+  return projects.map((project) => ({
+    ...project,
+    versions: project.versions.map((row) => {
+      const matching = comments.filter((comment) => comment.projectId === project.id && comment.version === row.v);
+      if (matching.length === 0) return row;
+      return {
+        ...row,
+        open: matching.filter((comment) => !comment.resolved).length,
+        resolved: matching.filter((comment) => comment.resolved).length
+      };
+    })
+  }));
+}
 
 function seedClients(): Client[] {
   return [
@@ -148,11 +196,13 @@ function migrate(parsed: AppState): AppState {
   if (!parsed.comments) parsed.comments = [];
   if (!parsed.layers) parsed.layers = [];
   if (!parsed.sessions) parsed.sessions = [];
+  if (!parsed.approvals) parsed.approvals = [];
   parsed.projects = parsed.projects.map((p, idx) => ({
     ...p,
     clientId: p.clientId ?? parsed.clients.find((c) => c.name === p.client)?.id,
     thumbnail: p.thumbnail ?? `/hero-slides/slide-${(idx % 6) + 1}.jpg`
   }));
+  parsed.projects = syncVersionCounts(parsed.projects, parsed.comments);
   return parsed;
 }
 
@@ -217,6 +267,7 @@ function seed(): AppState {
         participants: ['u-mw', 'u-ae', 'u-sh']
       }
     ],
+    approvals: [],
     members: DEMO_USERS.map((u) => ({
       id: u.id,
       name: u.name,
@@ -330,8 +381,22 @@ function load(): AppState | null {
   }
 }
 
-let state: AppState = load() ?? seed();
+let state: AppState = load() ?? migrate(seed());
 const listeners = new Set<() => void>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== KEY || !event.newValue) return;
+    try {
+      const incoming = JSON.parse(event.newValue) as AppState;
+      if (!incoming.companies || !incoming.members || !incoming.projects) return;
+      state = migrate(incoming);
+      listeners.forEach((listener) => listener());
+    } catch {
+      // Ignore malformed or incompatible cross-tab state.
+    }
+  });
+}
 
 function emit() {
   localStorage.setItem(KEY, JSON.stringify(state));
@@ -390,7 +455,7 @@ export const actions = {
       ? state.comments.filter((c) => c.projectId === projectId && c.version === prev && !c.resolved)
       : [];
     const carried = sourceComments.length;
-    const createdAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const createdAt = localStamp();
     const copiedComments = sourceComments.map((comment, index) => ({
       ...comment,
       id: `cm-${Date.now()}-${index}`,
@@ -412,7 +477,7 @@ export const actions = {
       }));
     const row: VersionRow = {
       v: nextV,
-      date: new Date().toISOString().slice(0, 10),
+      date: localDate(),
       status: 'editing',
       open: carried,
       resolved: 0
@@ -422,7 +487,15 @@ export const actions = {
       comments: [...state.comments, ...copiedComments],
       layers: [...state.layers, ...copiedLayers],
       projects: state.projects.map((x) =>
-        x.id === projectId ? { ...x, currentVersion: nextV, versions: [row, ...x.versions] } : x
+        x.id === projectId
+          ? {
+              ...x,
+              status: 'editing',
+              currentVersion: nextV,
+              versions: [row, ...x.versions],
+              activity: [activity(`${nextV} created${carried ? ` with ${carried} carried comments` : ''}`, `تم إنشاء ${nextV}${carried ? ` مع نقل ${carried} ملاحظات` : ''}`), ...x.activity]
+            }
+          : x
       )
     };
     emit();
@@ -529,34 +602,75 @@ export const actions = {
       ...c,
       id: `cm-${Date.now()}`,
       resolved: false,
-      createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+      createdAt: localStamp(),
       replies: []
     };
-    state = { ...state, comments: [...state.comments, rec] };
+    const comments = [...state.comments, rec];
+    const author = state.members.find((member) => member.id === c.authorId)?.name ?? 'Guest';
+    const projects = state.projects.map((project) =>
+      project.id === c.projectId
+        ? { ...project, activity: [activity(`${author} added a comment on ${c.version}`, `${author} أضاف ملاحظة على ${c.version}`), ...project.activity] }
+        : project
+    );
+    state = { ...state, comments, projects: syncVersionCounts(projects, comments) };
     emit();
     return rec;
   },
   toggleCommentResolved(id: string) {
-    state = { ...state, comments: state.comments.map((c) => (c.id === id ? { ...c, resolved: !c.resolved } : c)) };
+    const target = state.comments.find((comment) => comment.id === id);
+    if (!target) return;
+    const comments = state.comments.map((comment) => (comment.id === id ? { ...comment, resolved: !comment.resolved } : comment));
+    const projects = state.projects.map((project) =>
+      project.id === target.projectId
+        ? {
+            ...project,
+            activity: [
+              activity(
+                `${target.version} comment ${target.resolved ? 'reopened' : 'resolved'}`,
+                `تم ${target.resolved ? 'إعادة فتح' : 'حل'} ملاحظة على ${target.version}`
+              ),
+              ...project.activity
+            ]
+          }
+        : project
+    );
+    state = { ...state, comments, projects: syncVersionCounts(projects, comments) };
     emit();
   },
 
   addReply(commentId: string, authorId: string, text: string) {
+    const target = state.comments.find((comment) => comment.id === commentId);
+    if (!target) return;
+    const author = state.members.find((member) => member.id === authorId)?.name ?? 'Guest';
     state = {
       ...state,
       comments: state.comments.map((c) =>
         c.id === commentId
-          ? { ...c, replies: [...c.replies, { id: `rp-${Date.now()}`, authorId, text, at: new Date().toTimeString().slice(0, 5) }] }
+          ? { ...c, replies: [...c.replies, { id: `rp-${Date.now()}`, authorId, text, at: localTime() }] }
           : c
+      ),
+      projects: state.projects.map((project) =>
+        project.id === target.projectId
+          ? { ...project, activity: [activity(`${author} replied on ${target.version}`, `${author} رد على ملاحظة في ${target.version}`), ...project.activity] }
+          : project
       )
     };
     emit();
   },
 
   deleteComment(id: string) {
+    const target = state.comments.find((comment) => comment.id === id);
+    if (!target) return;
+    const comments = state.comments.filter((comment) => comment.id !== id);
+    const projects = state.projects.map((project) =>
+      project.id === target.projectId
+        ? { ...project, activity: [activity(`A comment was deleted from ${target.version}`, `تم حذف ملاحظة من ${target.version}`), ...project.activity] }
+        : project
+    );
     state = {
       ...state,
-      comments: state.comments.filter((c) => c.id !== id),
+      comments,
+      projects: syncVersionCounts(projects, comments),
       layers: state.layers.filter((l) => l.commentId !== id)
     };
     emit();
@@ -569,7 +683,10 @@ export const actions = {
     return rec;
   },
 
-  updateLayer(id: string, patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src'>>) {
+  updateLayer(
+    id: string,
+    patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src' | 'x' | 'y' | 'w' | 'h' | 'fs' | 'opacity' | 'rotation'>>
+  ) {
     state = { ...state, layers: state.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) };
     emit();
   },
@@ -590,8 +707,7 @@ export const actions = {
   },
 
   startSession(projectId: string, version: string, hostId: string) {
-    const now = new Date();
-    const stamp = now.toISOString().slice(0, 16).replace('T', ' ');
+    const stamp = localStamp();
     const existing = state.sessions.find((s) => s.projectId === projectId && s.version === version && !s.endedAt);
     if (existing) {
       if (!existing.participants.includes(hostId)) {
@@ -609,20 +725,125 @@ export const actions = {
       version,
       hostId,
       startedAt: stamp,
-      participants: [hostId]
+      participants: [hostId],
+      controlRequests: []
     };
-    state = { ...state, sessions: [rec, ...state.sessions] };
+    state = {
+      ...state,
+      sessions: [rec, ...state.sessions],
+      projects: state.projects.map((project) =>
+        project.id === projectId
+          ? { ...project, activity: [activity(`Live review started on ${version}`, `بدأت جلسة مراجعة مباشرة على ${version}`), ...project.activity] }
+          : project
+      )
+    };
     emit();
     return rec;
   },
 
-  endSession(id: string) {
-    const now = new Date();
+  takeSessionControl(id: string, actorId: string) {
+    const target = state.sessions.find((session) => session.id === id && !session.endedAt);
+    if (!target) return;
+    const actor = state.members.find((member) => member.id === actorId)?.name ?? 'Reviewer';
     state = {
       ...state,
-      sessions: state.sessions.map((s) => (s.id === id ? { ...s, endedAt: now.toISOString().slice(0, 16).replace('T', ' ') } : s))
+      sessions: state.sessions.map((session) =>
+        session.id === id
+          ? {
+              ...session,
+              hostId: actorId,
+              participants: session.participants.includes(actorId) ? session.participants : [...session.participants, actorId],
+              controlRequests: (session.controlRequests ?? []).filter((requesterId) => requesterId !== actorId)
+            }
+          : session
+      ),
+      projects: state.projects.map((project) =>
+        project.id === target.projectId
+          ? { ...project, activity: [activity(`${actor} took playback control on ${target.version}`, `${actor} استلم تحكم التشغيل على ${target.version}`), ...project.activity] }
+          : project
+      )
     };
     emit();
+  },
+
+  requestSessionControl(id: string, actorId: string) {
+    const target = state.sessions.find((session) => session.id === id && !session.endedAt);
+    if (!target || target.hostId === actorId || target.controlRequests?.includes(actorId)) return;
+    const actor = state.members.find((member) => member.id === actorId)?.name ?? 'Reviewer';
+    state = {
+      ...state,
+      sessions: state.sessions.map((session) =>
+        session.id === id
+          ? {
+              ...session,
+              controlRequests: [...(session.controlRequests ?? []), actorId],
+              participants: session.participants.includes(actorId) ? session.participants : [...session.participants, actorId]
+            }
+          : session
+      ),
+      projects: state.projects.map((project) =>
+        project.id === target.projectId
+          ? { ...project, activity: [activity(`${actor} requested playback control on ${target.version}`, `${actor} طلب تحكم التشغيل على ${target.version}`), ...project.activity] }
+          : project
+      )
+    };
+    emit();
+  },
+
+  endSession(id: string) {
+    const target = state.sessions.find((session) => session.id === id);
+    if (!target) return;
+    state = {
+      ...state,
+      sessions: state.sessions.map((s) => (s.id === id ? { ...s, endedAt: localStamp() } : s)),
+      projects: state.projects.map((project) =>
+        project.id === target.projectId
+          ? { ...project, activity: [activity(`Live review ended on ${target.version}`, `انتهت جلسة المراجعة المباشرة على ${target.version}`), ...project.activity] }
+          : project
+      )
+    };
+    emit();
+  },
+
+  recordApproval(projectId: string, version: string, actorId: string, decision: ApprovalRecord['decision'], note?: string) {
+    const project = state.projects.find((item) => item.id === projectId);
+    if (!project || !project.versions.some((item) => item.v === version)) return null;
+
+    const record: ApprovalRecord = {
+      id: `ap-${Date.now()}`,
+      projectId,
+      version,
+      actorId,
+      decision,
+      note: note?.trim() || undefined,
+      createdAt: localStamp(),
+      commentCount: state.comments.filter((comment) => comment.projectId === projectId && comment.version === version).length,
+      resolvedCount: state.comments.filter((comment) => comment.projectId === projectId && comment.version === version && comment.resolved).length
+    };
+    const actor = state.members.find((member) => member.id === actorId)?.name ?? 'Client';
+    const status: ProjectStatus = decision === 'approved' ? 'approved' : 'changes';
+    const activity: ActivityItem = {
+      time: localTime(),
+      textEn: decision === 'approved' ? `${version} approved by ${actor}` : `${actor} requested changes on ${version}`,
+      textAr: decision === 'approved' ? `${actor} اعتمد ${version}` : `${actor} طلب تعديلات على ${version}`
+    };
+
+    state = {
+      ...state,
+      approvals: [record, ...state.approvals],
+      projects: state.projects.map((item) =>
+        item.id === projectId
+          ? {
+              ...item,
+              status: item.currentVersion === version ? status : item.status,
+              versions: item.versions.map((row) => (row.v === version ? { ...row, status } : row)),
+              activity: [activity, ...item.activity]
+            }
+          : item
+      )
+    };
+    emit();
+    return record;
   },
 
   updateCompanyBranding(id: string, patch: Partial<Pick<Company, 'logoUrl' | 'brandColor' | 'tagline'>>) {

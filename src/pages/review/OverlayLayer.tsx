@@ -13,7 +13,10 @@ interface Props {
   canDraw: boolean;
   aspect: number;
   onAdd: (l: Omit<AnnotationLayer, 'id' | 'visible'>) => void;
-  onUpdate: (id: string, patch: Partial<Pick<AnnotationLayer, 'visible'>>) => void;
+  onUpdate: (
+    id: string,
+    patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src' | 'x' | 'y' | 'w' | 'h' | 'fs' | 'opacity' | 'rotation'>>
+  ) => void;
   onDelete: (id: string) => void;
 }
 
@@ -32,6 +35,7 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
   const [box, setBox] = useState({ w: 1280, h: 720 });
   const [draft, setDraft] = useState<ShapeDraft | null>(null);
   const [textEdit, setTextEdit] = useState<{ x: number; y: number; value: string } | null>(null);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -157,6 +161,11 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
   };
 
   const managedList = layers.filter((l) => l.commentId === draftKey);
+  const selectedLayer = managedList.find((layer) => layer.id === selectedLayerId) ?? null;
+
+  useEffect(() => {
+    if (selectedLayerId && !layers.some((layer) => layer.id === selectedLayerId && layer.commentId === draftKey)) setSelectedLayerId(null);
+  }, [draftKey, layers, selectedLayerId]);
 
   return (
     <div ref={wrapRef} className="pointer-events-none absolute inset-0">
@@ -167,11 +176,11 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
         onPointerMove={onMove}
         onPointerUp={onUp}
       >
-        <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${REF_W} ${REF_H}`} preserveAspectRatio="none">
+        <svg data-testid="review-overlay" className="absolute inset-0 h-full w-full" viewBox={`0 0 ${REF_W} ${REF_H}`} preserveAspectRatio="none">
           {layers
             .filter((l) => l.visible)
             .map((l) => (
-              <g key={l.id} opacity={0.95}>
+              <g key={l.id} opacity={l.opacity ?? 0.95} transform={layerTransform(l)}>
                 {l.type === 'pen' && l.pts && l.pts.length > 1 && (
                   <polyline points={l.pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={l.color} strokeWidth={l.sw * 1.6} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                 )}
@@ -233,28 +242,94 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
       )}
 
       {managedList.length > 0 && (
-        <div className="pointer-events-auto absolute start-3 top-3 z-20 w-44 space-y-1 rounded-xl border border-line bg-black/70 p-2 backdrop-blur-md">
+        <div className="pointer-events-auto absolute start-3 top-14 z-40 w-56 space-y-1 rounded-xl border border-line bg-black/75 p-2 backdrop-blur-md">
           <p className="px-1 text-[9px] font-bold tracking-widest text-muted/80 uppercase">Layers ({managedList.length})</p>
           {managedList.map((l, i) => (
-            <div key={l.id} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[10px] text-white/85">
+            <div key={l.id} className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] text-white/85 ${selectedLayerId === l.id ? 'bg-accent/20 ring-1 ring-accent/40' : 'bg-white/5'}`}>
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: l.color }} />
-              <span className="flex-1 truncate">
-                {i + 1}. {l.type}
-                {l.type === 'text' && l.text ? ` — ${l.text}` : ''}
-              </span>
-              <button onClick={() => onUpdate(l.id, { visible: !l.visible })} className="opacity-70 hover:opacity-100" title="Toggle">
+              <button type="button" onClick={() => setSelectedLayerId((current) => (current === l.id ? null : l.id))} className="min-w-0 flex-1 truncate text-start">
+                {i + 1}. {l.type}{l.type === 'text' && l.text ? ` — ${l.text}` : ''}
+              </button>
+              <button type="button" onClick={() => onUpdate(l.id, { visible: !l.visible })} className="opacity-70 hover:opacity-100" title="Toggle">
                 {l.visible ? '👁' : '🚫'}
               </button>
-              <button onClick={() => onDelete(l.id)} className="opacity-70 hover:text-red-400 hover:opacity-100" title="Delete">
+              <button type="button" onClick={() => onDelete(l.id)} className="opacity-70 hover:text-red-400 hover:opacity-100" title="Delete">
                 ✕
               </button>
             </div>
           ))}
+          {selectedLayer && (
+            <div className="space-y-2 rounded-lg border border-white/10 bg-black/35 p-2 text-[9px] text-white/70">
+              {(selectedLayer.x !== undefined || selectedLayer.y !== undefined) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <LayerNumber label="X" value={selectedLayer.x ?? 0} onChange={(value) => onUpdate(selectedLayer.id, { x: value })} />
+                  <LayerNumber label="Y" value={selectedLayer.y ?? 0} onChange={(value) => onUpdate(selectedLayer.id, { y: value })} />
+                </div>
+              )}
+              {selectedLayer.w !== undefined && selectedLayer.h !== undefined && (
+                <div className="grid grid-cols-2 gap-2">
+                  <LayerNumber label="W" value={selectedLayer.w} min={8} onChange={(value) => onUpdate(selectedLayer.id, { w: value })} />
+                  <LayerNumber label="H" value={selectedLayer.h} min={8} onChange={(value) => onUpdate(selectedLayer.id, { h: value })} />
+                </div>
+              )}
+              {selectedLayer.type === 'text' && (
+                <LayerNumber label="Font" value={selectedLayer.fs} min={8} onChange={(value) => onUpdate(selectedLayer.id, { fs: value })} />
+              )}
+              <label className="block">
+                <span className="mb-1 flex justify-between"><span>Opacity</span><span>{Math.round((selectedLayer.opacity ?? 0.95) * 100)}%</span></span>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={selectedLayer.opacity ?? 0.95}
+                  onChange={(event) => onUpdate(selectedLayer.id, { opacity: Number(event.target.value) })}
+                  className="w-full accent-accent"
+                />
+              </label>
+              {selectedLayer.type !== 'pen' && (
+                <label className="block">
+                  <span className="mb-1 flex justify-between"><span>Rotation</span><span>{Math.round(selectedLayer.rotation ?? 0)}°</span></span>
+                  <input
+                    type="range"
+                    min={-180}
+                    max={180}
+                    step={1}
+                    value={selectedLayer.rotation ?? 0}
+                    onChange={(event) => onUpdate(selectedLayer.id, { rotation: Number(event.target.value) })}
+                    className="w-full accent-accent"
+                  />
+                </label>
+              )}
+            </div>
+          )}
           {managedList.some((l) => l.commentId === draftKey) && (
             <p className="px-1 pt-0.5 text-[9px] leading-tight text-accent/80">Write a comment and Post to attach</p>
           )}
         </div>
       )}</div>
+  );
+}
+
+function layerTransform(layer: AnnotationLayer) {
+  if (!layer.rotation) return undefined;
+  const cx = (layer.x ?? 0) + (layer.w ?? 0) / 2;
+  const cy = (layer.y ?? 0) + (layer.h ?? 0) / 2;
+  return `rotate(${layer.rotation} ${cx} ${cy})`;
+}
+
+function LayerNumber({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (value: number) => void }) {
+  return (
+    <label className="flex items-center gap-1">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={min}
+        value={Math.round(value)}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="min-w-0 flex-1 rounded border border-white/10 bg-black/50 px-1.5 py-1 text-white outline-none focus:border-accent"
+      />
+    </label>
   );
 }
 

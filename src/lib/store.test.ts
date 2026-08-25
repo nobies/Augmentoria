@@ -55,4 +55,39 @@ describe('prototype store safeguards', () => {
     expect(copiedComment).toBeDefined();
     expect(getAppState().layers.some((layer) => layer.commentId === copiedComment?.id)).toBe(true);
   });
+
+  it('records approval decisions and updates both version and current project status', async () => {
+    const { actions, getAppState } = await import('./store');
+
+    const changeRequest = actions.recordApproval('p-vodafone', 'V04', 'u-sh', 'changes', 'Shorten the end card.');
+    expect(changeRequest).toEqual(expect.objectContaining({ decision: 'changes', note: 'Shorten the end card.' }));
+    expect(getAppState().projects.find((project) => project.id === 'p-vodafone')).toEqual(
+      expect.objectContaining({
+        status: 'changes',
+        versions: expect.arrayContaining([expect.objectContaining({ v: 'V04', status: 'changes' })])
+      })
+    );
+
+    actions.recordApproval('p-vodafone', 'V04', 'u-sh', 'approved', 'Ready to publish.');
+    const project = getAppState().projects.find((item) => item.id === 'p-vodafone');
+    expect(project?.status).toBe('approved');
+    expect(project?.activity[0].textEn).toContain('approved');
+    expect(getAppState().approvals.filter((item) => item.projectId === 'p-vodafone' && item.version === 'V04')).toHaveLength(2);
+  });
+
+  it('tracks live-session control requests, transfer, and completion', async () => {
+    const { actions, getAppState } = await import('./store');
+    const session = actions.startSession('p-flynas', 'V02', 'u-mw');
+
+    actions.requestSessionControl(session.id, 'u-sh');
+    expect(getAppState().sessions.find((item) => item.id === session.id)?.controlRequests).toContain('u-sh');
+
+    actions.takeSessionControl(session.id, 'u-sh');
+    const transferred = getAppState().sessions.find((item) => item.id === session.id);
+    expect(transferred?.hostId).toBe('u-sh');
+    expect(transferred?.controlRequests).not.toContain('u-sh');
+
+    actions.endSession(session.id);
+    expect(getAppState().sessions.find((item) => item.id === session.id)?.endedAt).toBeTruthy();
+  });
 });

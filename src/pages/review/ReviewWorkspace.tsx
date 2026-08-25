@@ -4,7 +4,7 @@ import { useLang } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
 import { actions, useAppState } from '../../lib/store';
 import { brandColor, GoldMark } from '../../components/ui/bits';
-import { idb } from '../../lib/idb';
+import { mediaStorage } from '../../lib/mediaStorage';
 import { useProjectAssets } from '../../lib/assets';
 import { exportCommentsCSV, exportFramePNG, exportSessionJSON } from '../../lib/exportReview';
 import Player from './Player';
@@ -34,6 +34,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const canExport = !guest && can('reports.export');
   const canShare = !guest && can('projects.edit');
   const canHostSession = !guest && can('projects.edit');
+  const canDecide = guest || can('approvals.grant');
   const actorId = guest ? 'guest' : user.id;
 
   const project = state.projects.find((p) => p.id === pid);
@@ -51,11 +52,20 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const [aspect, setAspect] = useState(16 / 9);
   const [draftRange, setDraftRange] = useState<{ tc: number; rangeEnd?: number } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   const [annotationToolsOpen, setAnnotationToolsOpen] = useState(false);
+  const [decisionOpen, setDecisionOpen] = useState<'approved' | 'changes' | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
   const { assets } = useProjectAssets(project?.id);
   const videoAssets = useMemo(() => assets.filter((a) => a.isVideo), [assets]);
   const [pickedAssetId, setPickedAssetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const onBreakpointChange = (event: MediaQueryListEvent) => setCommentsOpen(event.matches);
+    media.addEventListener('change', onBreakpointChange);
+    return () => media.removeEventListener('change', onBreakpointChange);
+  }, []);
 
   const company = state.companies[0];
   useEffect(() => {
@@ -66,44 +76,34 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   }, [company?.brandColor, guest]);
 
   useEffect(() => {
+    let active = true;
     let url: string | null = null;
-    idb
-      .all('video')
-      .then((recs) => {
-        const rec = recs.find((r) => r.id === `${project?.id}__${version}`);
-        if (rec) {
-          url = URL.createObjectURL(rec.blob);
-          setCustomVideo({ url, name: rec.name });
-        }
-      })
-      .catch(() => {});
+    setCustomVideo(null);
+    if (project?.id) {
+      mediaStorage
+        .getVersionVideo(project.id, version)
+        .then((rec) => {
+          if (active && rec) {
+            url = URL.createObjectURL(rec.blob);
+            setCustomVideo({ url, name: rec.name });
+          }
+        })
+        .catch(() => {});
+    }
     return () => {
+      active = false;
       if (url) URL.revokeObjectURL(url);
     };
   }, [project?.id, version]);
 
   const canUploadVideo = !guest && can('versions.upload');
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!canHostSession || !projectId) return;
-    const rec = actions.startSession(projectId, version, user.id);
-    setSessionId(rec.id);
-  }, [canHostSession, projectId, user.id, version]);
-
   const onUploadVideo = async (file: File) => {
+    if (!project?.id) return;
     const url = URL.createObjectURL(file);
     try {
-      await idb.put('video', {
-        id: `${project?.id}__${version}`,
-        name: file.name,
-        type: file.type,
-        blob: file,
-        active: true,
-        createdAt: Date.now()
-      });
-      await idb.put('assets', {
+      await mediaStorage.saveVersionVideo(project.id, version, file);
+      await mediaStorage.saveAsset({
         id: `as-${Date.now()}-${Math.round(Math.random() * 999)}`,
         projectId: project?.id,
         name: `${version} — ${file.name}`,
@@ -131,9 +131,27 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     [state.comments, project?.id, version]
   );
 
+  const activeSession = useMemo(
+    () => state.sessions.find((session) => session.projectId === projectId && session.version === version && !session.endedAt),
+    [projectId, state.sessions, version]
+  );
+  const pendingControlRequesterId = activeSession?.controlRequests?.[0];
+  const pendingControlRequester = pendingControlRequesterId ? memberMap.get(pendingControlRequesterId)?.name ?? 'Reviewer' : null;
+
+  const latestDecision = useMemo(
+    () => state.approvals.find((item) => item.projectId === project?.id && item.version === version),
+    [project?.id, state.approvals, version]
+  );
+
+  const activeComment = comments.find((comment) => comment.id === activeId);
+  const activeOverlayInRange = activeComment
+    ? activeComment.kind === 'range'
+      ? time >= activeComment.tc && time <= (activeComment.rangeEnd ?? activeComment.tc)
+      : Math.abs(time - activeComment.tc) <= 0.08
+    : false;
   const visibleLayers = useMemo(
-    () => state.layers.filter((l) => l.commentId === activeId || l.commentId === DRAFT),
-    [state.layers, activeId]
+    () => state.layers.filter((layer) => layer.commentId === DRAFT || (activeOverlayInRange && layer.commentId === activeId)),
+    [activeId, activeOverlayInRange, state.layers]
   );
 
   const layerCounts = useMemo(() => {
@@ -185,6 +203,56 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !projectId || !activeSession || typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(`augmentoria-review-${projectId}-${version}`);
+    const controlsPlayback = !guest && activeSession.hostId === user.id;
+    let lastTimeSent = 0;
+    let applyingRemote = false;
+
+    const send = (action: 'play' | 'pause' | 'seek' | 'time') => {
+      if (!controlsPlayback || applyingRemote) return;
+      channel.postMessage({ type: 'playback', action, time: video.currentTime, sessionId: activeSession.id });
+    };
+    const onPlay = () => send('play');
+    const onPause = () => send('pause');
+    const onSeek = () => send('seek');
+    const onTime = () => {
+      const now = Date.now();
+      if (now - lastTimeSent < 750) return;
+      lastTimeSent = now;
+      send('time');
+    };
+
+    if (controlsPlayback) {
+      video.addEventListener('play', onPlay);
+      video.addEventListener('pause', onPause);
+      video.addEventListener('seeked', onSeek);
+      video.addEventListener('timeupdate', onTime);
+    }
+
+    channel.onmessage = (event) => {
+      const message = event.data as { type?: string; action?: string; time?: number; sessionId?: string };
+      if (controlsPlayback || message.type !== 'playback' || message.sessionId !== activeSession.id || typeof message.time !== 'number') return;
+      applyingRemote = true;
+      if (Math.abs(video.currentTime - message.time) > 0.08) video.currentTime = message.time;
+      if (message.action === 'play') void video.play().catch(() => undefined);
+      if (message.action === 'pause') video.pause();
+      window.setTimeout(() => {
+        applyingRemote = false;
+      }, 100);
+    };
+
+    return () => {
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('seeked', onSeek);
+      video.removeEventListener('timeupdate', onTime);
+      channel.close();
+    };
+  }, [activeSession, guest, projectId, user.id, version]);
+
   const markers: Marker[] = comments.map((c) => ({
     id: c.id,
     tc: c.tc,
@@ -234,8 +302,8 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const shareUrl = `${window.location.origin}/review/${project.id}/${version}`;
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden flex-col bg-bg text-ink">
-      <header className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-line px-2 sm:px-4 lg:px-5">
+    <div className="review-workspace flex h-[100dvh] overflow-hidden flex-col bg-bg text-ink">
+      <header className="review-header flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-line px-2 sm:px-4 lg:px-5">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {canExport && (
             <Link to="/app/projects" className="rounded-full border border-line p-2 text-muted transition-colors hover:border-accent hover:text-accent">
@@ -278,6 +346,17 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-controls="review-comments"
+            aria-expanded={commentsOpen}
+            onClick={() => setCommentsOpen((open) => !open)}
+            className={`hidden rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors lg:block ${
+              commentsOpen ? 'border-accent/40 text-accent' : 'border-line text-muted hover:text-ink'
+            }`}
+          >
+            💬 {comments.length}
+          </button>
           {canUploadVideo && (
             <>
               <input
@@ -380,15 +459,65 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
             </button>
           )}
 
-          {sessionId && (
+          {canHostSession && !activeSession && (
+            <button
+              type="button"
+              onClick={() => {
+                if (projectId) actions.startSession(projectId, version, user.id);
+              }}
+              className="rounded-full border border-emerald-400/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/10"
+            >
+              ● {lang === 'ar' ? 'ابدأ Live' : 'Start Live'}
+            </button>
+          )}
+          {activeSession && canHostSession && activeSession.hostId === user.id && pendingControlRequesterId && (
+            <button
+              type="button"
+              onClick={() => actions.takeSessionControl(activeSession.id, pendingControlRequesterId)}
+              className="rounded-full border border-orange-400/40 px-3 py-1.5 text-xs font-semibold text-orange-300 transition-colors hover:bg-orange-400/10"
+            >
+              {lang === 'ar' ? `قبول تحكم ${pendingControlRequester}` : `Accept ${pendingControlRequester}'s control request`}
+            </button>
+          )}
+          {activeSession && canHostSession && (
             <button
               onClick={() => {
-                actions.endSession(sessionId);
-                setSessionId(null);
+                if (activeSession.hostId === user.id) actions.endSession(activeSession.id);
+                else actions.takeSessionControl(activeSession.id, user.id);
               }}
-              title={t('ses_end')}
+              title={activeSession.hostId === user.id ? t('ses_end') : lang === 'ar' ? 'استلم التحكم' : 'Take control'}
               className="flex items-center gap-1.5 rounded-full border border-red-400/40 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-400/10"
             >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-400" />
+              </span>
+              {activeSession.hostId === user.id ? t('ses_end') : lang === 'ar' ? 'استلم التحكم' : 'Take control'}
+            </button>
+          )}
+          {activeSession && !canHostSession && !guest && activeSession.hostId !== user.id && (
+            <button
+              type="button"
+              disabled={activeSession.controlRequests?.includes(user.id)}
+              onClick={() => actions.requestSessionControl(activeSession.id, user.id)}
+              className="rounded-full border border-orange-400/40 px-3 py-1.5 text-xs font-semibold text-orange-300 transition-colors hover:bg-orange-400/10 disabled:opacity-50"
+            >
+              {activeSession.controlRequests?.includes(user.id)
+                ? lang === 'ar'
+                  ? 'تم طلب التحكم'
+                  : 'Control requested'
+                : lang === 'ar'
+                  ? 'طلب التحكم'
+                  : 'Request control'}
+            </button>
+          )}
+          {activeSession && !canHostSession && !guest && activeSession.hostId === user.id && (
+            <span className="rounded-full border border-emerald-400/40 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+              🎮 {lang === 'ar' ? 'أنت متحكم' : 'You have control'}
+            </span>
+          )}
+          {activeSession && guest && (
+            <button type="button" title={t('ses_live')} disabled className="flex items-center gap-1.5 rounded-full border border-red-400/40 px-3 py-1.5 text-xs font-semibold text-red-300">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-red-400" />
@@ -399,8 +528,64 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
         </div>
       </header>
 
+      {(canDecide || latestDecision) && (
+        <div className="review-decision-bar flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface/70 px-3 py-2 sm:px-5">
+          <span
+            className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase ${
+              latestDecision?.decision === 'approved'
+                ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300'
+                : latestDecision?.decision === 'changes'
+                  ? 'border-orange-400/40 bg-orange-400/10 text-orange-300'
+                  : 'border-line text-muted'
+            }`}
+          >
+            {latestDecision?.decision === 'approved'
+              ? lang === 'ar'
+                ? 'تم الاعتماد'
+                : 'Approved'
+              : latestDecision?.decision === 'changes'
+                ? lang === 'ar'
+                  ? 'تعديلات مطلوبة'
+                  : 'Changes requested'
+                : lang === 'ar'
+                  ? 'في انتظار القرار'
+                  : 'Awaiting decision'}
+          </span>
+          {latestDecision && (
+            <span className="truncate text-[10px] text-muted">
+              {state.members.find((member) => member.id === latestDecision.actorId)?.name ?? 'Client'} · {latestDecision.createdAt}
+              {latestDecision.note ? ` — ${latestDecision.note}` : ''}
+            </span>
+          )}
+          {canDecide && (
+            <div className="ms-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDecisionNote('');
+                  setDecisionOpen('changes');
+                }}
+                className="rounded-full border border-orange-400/40 px-3 py-1.5 text-[11px] font-bold text-orange-300 transition-colors hover:bg-orange-400/10"
+              >
+                {lang === 'ar' ? 'طلب تعديلات' : 'Request changes'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDecisionNote('');
+                  setDecisionOpen('approved');
+                }}
+                className="rounded-full bg-emerald-400 px-4 py-1.5 text-[11px] font-black text-bg transition-colors hover:bg-emerald-300"
+              >
+                ✓ {lang === 'ar' ? 'اعتماد النسخة' : 'Approve version'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {videoAssets.length > 0 && !customVideo && (
-        <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-line px-4 py-2 lg:px-5">
+        <div className="review-assets-bar flex shrink-0 items-center gap-2 overflow-x-auto border-b border-line px-4 py-2 lg:px-5">
           <span className="shrink-0 text-[10px] font-bold tracking-widest text-muted/60 uppercase">{t('rv_from_library')}</span>
           {videoAssets.map((a) => (
             <button
@@ -417,9 +602,9 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 sm:gap-3 sm:p-4 lg:p-5">
-          <div className="relative flex min-h-0 flex-1">
+      <div className="review-body relative flex min-h-0 flex-1 overflow-hidden">
+        <main className="review-main relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 sm:gap-3 sm:p-4 lg:p-5">
+          <div className="review-player-wrap relative flex min-h-0 flex-1">
             <Player
               src={src}
               videoRef={videoRef}
@@ -447,7 +632,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
 
           {canAnnotate && (
             <div
-              className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors ${
+              className={`review-annotation-bar flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 transition-colors ${
                 tool === 'select' && !annotationToolsOpen ? 'max-lg:hidden' : ''
               } ${
                 tool !== 'select' ? 'border-accent/50 bg-accent/[0.04]' : 'border-line bg-surface'
@@ -538,7 +723,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
           )}
 
           {tool === 'select' && !annotationToolsOpen && (
-            <div className="flex shrink-0 gap-2 lg:hidden">
+            <div className="review-mobile-actions flex shrink-0 gap-2 lg:hidden">
               {canAnnotate && (
                 <button
                   type="button"
@@ -586,6 +771,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
           onPost={post}
           onDraftRange={setDraftRange}
           draftLayers={state.layers.filter((l) => l.commentId === DRAFT)}
+          layers={state.layers.filter((layer) => comments.some((comment) => comment.id === layer.commentId))}
           onRemoveDraftLayer={actions.deleteLayer}
           onToggleDraftLayer={(id, visible) => actions.updateLayer(id, { visible })}
           layerCounts={layerCounts}
@@ -595,11 +781,76 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
       </div>
 
       {guest && (
-        <footer className="shrink-0 border-t border-line py-2 text-center text-[10px] tracking-widest text-muted/40 uppercase">
+        <footer className="review-footer shrink-0 border-t border-line py-2 text-center text-[10px] tracking-widest text-muted/40 uppercase">
           {company?.tagline ?? (lang === 'ar' ? 'مراجعة فيديو احترافية' : 'Professional video review')}
           {' · '}
           <span className="text-accent/60">Augmentoria</span>
         </footer>
+      )}
+
+      {decisionOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="presentation" onMouseDown={() => setDecisionOpen(null)}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-decision-title"
+            className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-2xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="review-decision-title" className="font-display text-lg font-black">
+              {decisionOpen === 'approved'
+                ? lang === 'ar'
+                  ? `اعتماد ${version}`
+                  : `Approve ${version}`
+                : lang === 'ar'
+                  ? `طلب تعديلات على ${version}`
+                  : `Request changes on ${version}`}
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted">
+              {decisionOpen === 'changes'
+                ? lang === 'ar'
+                  ? 'اكتب ملخص التعديلات المطلوبة. الملخص إجباري وسيتحفظ في سجل القرار.'
+                  : 'Summarize the required changes. This note is required and saved in the decision history.'
+                : lang === 'ar'
+                  ? 'يمكنك إضافة ملاحظة اختيارية مع الاعتماد.'
+                  : 'You can include an optional note with the approval.'}
+            </p>
+            <textarea
+              autoFocus
+              value={decisionNote}
+              onChange={(event) => setDecisionNote(event.target.value)}
+              rows={4}
+              placeholder={lang === 'ar' ? 'ملاحظة القرار…' : 'Decision note…'}
+              className="mt-4 w-full resize-none rounded-xl border border-line bg-bg px-3 py-2.5 text-sm outline-none focus:border-accent"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setDecisionOpen(null)} className="rounded-full border border-line px-4 py-2 text-xs text-muted hover:text-ink">
+                {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                disabled={decisionOpen === 'changes' && !decisionNote.trim()}
+                onClick={() => {
+                  if (!project) return;
+                  actions.recordApproval(project.id, version, actorId, decisionOpen, decisionNote);
+                  setDecisionOpen(null);
+                  setDecisionNote('');
+                }}
+                className={`rounded-full px-5 py-2 text-xs font-black text-bg disabled:cursor-not-allowed disabled:opacity-40 ${
+                  decisionOpen === 'approved' ? 'bg-emerald-400' : 'bg-orange-400'
+                }`}
+              >
+                {decisionOpen === 'approved'
+                  ? lang === 'ar'
+                    ? 'تأكيد الاعتماد'
+                    : 'Confirm approval'
+                  : lang === 'ar'
+                    ? 'إرسال طلب التعديل'
+                    : 'Send change request'}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

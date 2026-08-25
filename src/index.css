@@ -75,3 +75,28 @@ body {
     radial-gradient(ellipse 55% 45% at 25% 75%, rgba(79, 209, 197, 0.1), transparent 60%),
     radial-gradient(ellipse at center, #161616 0%, #0a0a0a 70%);
 }
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 950px) {
+  .review-workspace .review-header {
+    height: 2.5rem;
+  }
+
+  .review-workspace .review-decision-bar,
+  .review-workspace .review-assets-bar,
+  .review-workspace .review-footer {
+    display: none;
+  }
+
+  .review-workspace .review-main {
+    gap: 0.25rem;
+    padding: 0.25rem;
+  }
+
+  .review-workspace .review-player-controls {
+    margin-top: 0.25rem;
+  }
+
+  .review-workspace .review-mobile-actions button {
+    padding-block: 0.45rem;
+  }
+}

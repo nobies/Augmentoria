@@ -25,6 +25,7 @@ interface Props {
   onPost: (payload: { kind: 'frame' | 'range'; tc: number; rangeEnd?: number; text: string }) => void;
   onDraftRange: (r: { tc: number; rangeEnd?: number } | null) => void;
   draftLayers: AnnotationLayer[];
+  layers: AnnotationLayer[];
   onRemoveDraftLayer: (id: string) => void;
   onToggleDraftLayer: (id: string, visible: boolean) => void;
   layerCounts: Record<string, number>;
@@ -88,6 +89,8 @@ export default function CommentsPanel(p: Props) {
     <aside
       id="review-comments"
       className={`flex h-full min-h-0 w-[350px] shrink-0 flex-col border-s border-line bg-surface max-xl:w-[300px] max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[min(62vh,32rem)] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-s-0 max-lg:border-t max-lg:shadow-2xl max-lg:transition-transform max-lg:duration-300 ${
+        p.mobileOpen ? 'lg:flex' : 'lg:hidden'
+      } ${
         p.mobileOpen ? 'max-lg:visible max-lg:translate-y-0' : 'max-lg:invisible max-lg:pointer-events-none max-lg:translate-y-full'
       }`}
     >
@@ -123,6 +126,7 @@ export default function CommentsPanel(p: Props) {
         {list.map((c) => {
           const author = p.members.get(c.authorId);
           const count = p.layerCounts[c.id] ?? 0;
+          const commentLayers = p.layers.filter((layer) => layer.commentId === c.id && layer.visible);
           const isActive = c.id === p.activeId;
           return (
             <div
@@ -162,14 +166,7 @@ export default function CommentsPanel(p: Props) {
                   </div>
                   <p className={`mt-1.5 text-xs leading-relaxed ${c.resolved ? 'line-through decoration-muted/50' : ''}`}>{c.text}</p>
 
-                  {c.thumb && (
-                    <img
-                      src={c.thumb}
-                      alt=""
-                      className="mt-2 w-full rounded-lg border border-line object-cover"
-                      loading="lazy"
-                    />
-                  )}
+                  {c.thumb && <CommentThumbnail src={c.thumb} layers={commentLayers} />}
 
                   <div className="mt-2 flex items-center gap-2 text-[10px] text-muted">
                     {count > 0 && (
@@ -370,5 +367,30 @@ export default function CommentsPanel(p: Props) {
         </div>
       )}
     </aside>
+  );
+}
+
+function CommentThumbnail({ src, layers }: { src: string; layers: AnnotationLayer[] }) {
+  return (
+    <div className="relative mt-2 aspect-video w-full overflow-hidden rounded-lg border border-line bg-black">
+      <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1280 720" preserveAspectRatio="none" aria-hidden="true">
+        {layers.map((layer) => {
+          const cx = (layer.x ?? 0) + (layer.w ?? 0) / 2;
+          const cy = (layer.y ?? 0) + (layer.h ?? 0) / 2;
+          const transform = layer.rotation ? `rotate(${layer.rotation} ${cx} ${cy})` : undefined;
+          return (
+            <g key={layer.id} opacity={layer.opacity ?? 0.95} transform={transform}>
+              {layer.type === 'pen' && layer.pts && <polyline points={layer.pts.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke={layer.color} strokeWidth={8} strokeLinecap="round" />}
+              {layer.type === 'arrow' && layer.x !== undefined && layer.y !== undefined && layer.w !== undefined && layer.h !== undefined && <line x1={layer.x} y1={layer.y} x2={layer.x + layer.w} y2={layer.y + layer.h} stroke={layer.color} strokeWidth={8} strokeLinecap="round" />}
+              {layer.type === 'circle' && layer.x !== undefined && layer.y !== undefined && layer.w && layer.h && <ellipse cx={layer.x + layer.w / 2} cy={layer.y + layer.h / 2} rx={layer.w / 2} ry={layer.h / 2} fill="none" stroke={layer.color} strokeWidth={8} />}
+              {layer.type === 'rect' && layer.x !== undefined && layer.y !== undefined && layer.w && layer.h && <rect x={layer.x} y={layer.y} width={layer.w} height={layer.h} fill="none" stroke={layer.color} strokeWidth={8} />}
+              {layer.type === 'text' && layer.x !== undefined && layer.y !== undefined && layer.text && <text x={layer.x} y={layer.y} fill={layer.color} fontSize={layer.fs} fontWeight={700}>{layer.text}</text>}
+              {layer.type === 'image' && layer.x !== undefined && layer.y !== undefined && layer.w && layer.h && layer.src && <image href={layer.src} x={layer.x} y={layer.y} width={layer.w} height={layer.h} preserveAspectRatio="xMidYMid meet" />}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }

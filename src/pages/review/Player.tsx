@@ -80,6 +80,13 @@ export default function Player({ src, videoRef, onTime, markers, onMarkerClick, 
     v.currentTime = t;
   };
 
+  const toggleFullscreen = () => {
+    const wrapper = wrapRef.current;
+    if (!wrapper) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void wrapper.requestFullscreen();
+  };
+
   const trackClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     seekTo(((e.clientX - rect.left) / rect.width) * dur);
@@ -89,7 +96,7 @@ export default function Player({ src, videoRef, onTime, markers, onMarkerClick, 
     'flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted transition-colors hover:border-accent hover:text-accent';
 
   return (
-    <div ref={wrapRef} className="flex h-full min-w-0 flex-1 flex-col">
+    <div ref={wrapRef} className="review-player flex h-full min-w-0 flex-1 flex-col bg-bg">
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-line bg-black">
         <video
           ref={videoRef}
@@ -100,7 +107,7 @@ export default function Player({ src, videoRef, onTime, markers, onMarkerClick, 
         />
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="review-player-controls mt-3 space-y-2">
         <div
           onClick={trackClick}
           className="group relative h-2.5 cursor-pointer rounded-full bg-line"
@@ -167,7 +174,7 @@ export default function Player({ src, videoRef, onTime, markers, onMarkerClick, 
           <span className="font-mono text-xs tabular-nums text-muted">{fmt(dur)}</span>
 
           <div className="ms-auto flex items-center gap-2">
-            <svg className="text-muted" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <svg className="text-muted max-sm:hidden" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.08" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <input
@@ -181,8 +188,13 @@ export default function Player({ src, videoRef, onTime, markers, onMarkerClick, 
                 setVol(v);
                 if (videoRef.current) videoRef.current.volume = v;
               }}
-              className="w-20 accent-accent"
+              className="w-20 accent-accent max-sm:hidden"
             />
+            <button onClick={toggleFullscreen} className={btn} aria-label="Fullscreen" title="Fullscreen">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>

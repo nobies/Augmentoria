@@ -56,7 +56,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
   const [annotationToolsOpen, setAnnotationToolsOpen] = useState(false);
   const [decisionOpen, setDecisionOpen] = useState<'approved' | 'changes' | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
-  const { assets } = useProjectAssets(project?.id);
+  const { assets, assignToVersion } = useProjectAssets(project?.id);
   const videoAssets = useMemo(() => assets.filter((a) => a.isVideo), [assets]);
   const [pickedAssetId, setPickedAssetId] = useState<string | null>(null);
 
@@ -116,8 +116,15 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     } catch (err) {
       console.error('[review] video upload failed', err);
     }
-    if (customVideo?.url) URL.revokeObjectURL(customVideo.url);
     setCustomVideo({ url, name: file.name });
+  };
+
+  const handleAssetForReview = async (assetId: string) => {
+    const asset = videoAssets.find((row) => row.id === assetId);
+    if (!asset || !project?.id) return;
+    await assignToVersion(asset.id, version);
+    setPickedAssetId(asset.id);
+    setCustomVideo({ url: asset.url, name: asset.name });
   };
 
   const memberMap = useMemo(() => {
@@ -295,7 +302,7 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
     return <NotFoundPage />;
   }
 
-  const pickedAsset = videoAssets.find((a) => a.id === pickedAssetId) ?? videoAssets[0];
+  const pickedAsset = videoAssets.find((a) => a.id === pickedAssetId);
   const usingDemo = !customVideo && !pickedAsset;
   const src = customVideo?.url ?? pickedAsset?.url ?? defaultVideo(project.id);
 
@@ -380,6 +387,14 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
                 {customVideo ? `✓ ${t('rv_custom_video')}` : `⬆ ${t('rv_upload_video')}`}
               </button>
             </>
+          )}
+          {!guest && canUploadVideo && (
+            <Link
+              to={`/studio/editor/${project.id}/${version}${pickedAsset ? `?asset=${pickedAsset.id}` : ''}`}
+              className="rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              ✂ {lang === 'ar' ? 'المونتاج' : 'Editor'}
+            </Link>
           )}
           {usingDemo && (
             <span className="hidden rounded-full bg-orange-400/10 px-3 py-1.5 text-[10px] font-medium text-orange-300 lg:block" title={t('rv_demo_hint')}>
@@ -584,21 +599,26 @@ export default function ReviewWorkspace({ mode = 'app' }: { mode?: 'app' | 'gues
         </div>
       )}
 
-      {videoAssets.length > 0 && !customVideo && (
+      {videoAssets.length > 0 && (
         <div className="review-assets-bar flex shrink-0 items-center gap-2 overflow-x-auto border-b border-line px-4 py-2 lg:px-5">
           <span className="shrink-0 text-[10px] font-bold tracking-widest text-muted/60 uppercase">{t('rv_from_library')}</span>
           {videoAssets.map((a) => (
             <button
               key={a.id}
-              onClick={() => setPickedAssetId(a.id)}
+              onClick={() => void handleAssetForReview(a.id)}
               title={a.note ?? a.name}
               className={`shrink-0 rounded-full border px-3 py-1 text-[11px] transition-colors ${
                 pickedAsset?.id === a.id ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink'
               }`}
             >
-              ▶ {a.name}
+              {pickedAsset?.id === a.id ? '✓' : '▶'} {a.name}
             </button>
           ))}
+          {videoAssets.length > 1 && (
+            <Link to={`/studio/asset-compare/${project.id}/${videoAssets[0].id}/${videoAssets[1].id}`} className="shrink-0 rounded-full border border-accent/40 px-3 py-1 text-[11px] font-bold text-accent hover:bg-accent/10">
+              ⇄ {lang === 'ar' ? 'قارن فيديوهين' : 'Compare assets'}
+            </Link>
+          )}
         </div>
       )}
 

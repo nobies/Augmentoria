@@ -249,3 +249,53 @@ test('compare uses the independently stored video for each version and exposes F
   await flicker.click();
   await expect.poll(() => videos.nth(1).evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
 });
+
+test('uploaded video assets can be assigned to review and compared with each other', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/app/projects/p-vodafone');
+  await page.getByRole('button', { name: /Assets|الأصول/i }).click();
+  await page.locator('input[type="file"]').setInputFiles([
+    'public/demo/vodafone-v04.mp4',
+    'public/demo/flynas-v02.mp4'
+  ]);
+
+  await expect(page.getByText('vodafone-v04.mp4', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Use in Review V04|استخدم في Review V04/i }).first().click();
+  await expect(page.getByRole('button', { name: /✓ Use in Review V04|✓ استخدم في Review V04/i })).toBeVisible();
+
+  const compareToggles = page.getByRole('button', { name: /Compare$|مقارنة$/i });
+  await compareToggles.nth(0).click();
+  await compareToggles.nth(1).click();
+  await page.getByRole('button', { name: /Compare \(2\/2\)|قارن \(2\/2\)/i }).click();
+
+  await expect(page).toHaveURL(/\/studio\/asset-compare\/p-vodafone\//);
+  await expect(page.locator('video')).toHaveCount(2);
+  await expect(page.getByText(/Asset video compare|مقارنة فيديوهات/i)).toBeVisible();
+});
+
+test('video editor supports trim timeline and splitting a real clip', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/studio/editor/p-vodafone/V04');
+
+  await expect(page.getByText(/Non-destructive video editor|مونتاج فيديو غير هدّام/i)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Timeline · 1 clips/i })).toBeVisible();
+  const video = page.locator('main video');
+  await expect(video).toBeVisible();
+  await video.evaluate((element) => {
+    element.currentTime = 10;
+    element.dispatchEvent(new Event('timeupdate', { bubbles: true }));
+  });
+  await page.getByRole('button', { name: /Split at playhead|اقسم عند المؤشر/i }).click();
+  await expect(page.getByRole('heading', { name: /Timeline · 2 clips/i })).toBeVisible();
+  await expect(page.getByText(/Saved|محفوظ/i)).toBeVisible();
+});
+
+test('project sessions tab starts a live review on the selected version', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/app/projects/p-vodafone');
+  await page.getByRole('button', { name: /Sessions|الجلسات/i }).click();
+  await page.locator('select').last().selectOption('V03');
+  await page.getByRole('button', { name: /Start now|ابدأ الآن/i }).click();
+  await expect(page).toHaveURL('/studio/review/p-vodafone/V03');
+  await expect(page.getByRole('button', { name: /End session|إنهاء الجلسة/i })).toBeVisible();
+});

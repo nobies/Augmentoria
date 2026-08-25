@@ -685,7 +685,7 @@ export const actions = {
 
   updateLayer(
     id: string,
-    patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src' | 'x' | 'y' | 'w' | 'h' | 'fs' | 'opacity' | 'rotation'>>
+    patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src' | 'x' | 'y' | 'w' | 'h' | 'fs' | 'opacity' | 'rotation' | 'color'>>
   ) {
     state = { ...state, layers: state.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) };
     emit();

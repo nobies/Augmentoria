@@ -3,21 +3,24 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
 import { useAppState } from '../../lib/store';
 import { mediaStorage } from '../../lib/mediaStorage';
+import { useProjectAssets } from '../../lib/assets';
 import { GoldMark } from '../../components/ui/bits';
 import NotFoundPage from '../NotFoundPage';
 
 type Mode = 'side' | 'wipe' | 'overlay' | 'flicker';
 
-export default function ComparePage() {
+export default function ComparePage({ source = 'versions' }: { source?: 'versions' | 'assets' }) {
   const { t, lang } = useLang();
-  const { pid, vA: vAParam, vB: vBParam } = useParams();
+  const { pid, vA: vAParam, vB: vBParam, assetA, assetB } = useParams();
   const navigate = useNavigate();
   const state = useAppState();
   const project = state.projects.find((p) => p.id === pid);
+  const { assets, loading: assetsLoading } = useProjectAssets(pid);
+  const videoAssets = assets.filter((asset) => asset.isVideo);
 
   const versions = project?.versions.map((v) => v.v) ?? [];
-  const [vA, setVA] = useState(vAParam ?? versions[0] ?? 'V01');
-  const [vB, setVB] = useState(vBParam ?? versions[1] ?? versions[0] ?? 'V01');
+  const [vA, setVA] = useState(source === 'assets' ? assetA ?? '' : vAParam ?? versions[0] ?? 'V01');
+  const [vB, setVB] = useState(source === 'assets' ? assetB ?? '' : vBParam ?? versions[1] ?? versions[0] ?? 'V01');
   const [mode, setMode] = useState<Mode>('wipe');
   const [wipe, setWipe] = useState(50);
   const [playing, setPlaying] = useState(false);
@@ -29,8 +32,14 @@ export default function ComparePage() {
   const refB = useRef<HTMLVideoElement>(null);
   const wiping = useRef(false);
 
-  const srcA = useVersionVideo(pid, vA);
-  const srcB = useVersionVideo(pid, vB);
+  const versionSrcA = useVersionVideo(pid, source === 'versions' ? vA : undefined);
+  const versionSrcB = useVersionVideo(pid, source === 'versions' ? vB : undefined);
+  const assetRowA = videoAssets.find((asset) => asset.id === vA);
+  const assetRowB = videoAssets.find((asset) => asset.id === vB);
+  const srcA = source === 'assets' ? assetRowA?.url ?? '' : versionSrcA;
+  const srcB = source === 'assets' ? assetRowB?.url ?? '' : versionSrcB;
+  const labelA = source === 'assets' ? assetRowA?.name ?? vA : vA;
+  const labelB = source === 'assets' ? assetRowB?.name ?? vB : vB;
 
   useEffect(() => {
     if (mode !== 'flicker') {
@@ -105,7 +114,11 @@ export default function ComparePage() {
     wiping.current = false;
   };
 
-  if (!project || !versions.includes(vA) || !versions.includes(vB)) {
+  const validSelection = source === 'assets' ? videoAssets.some((asset) => asset.id === vA) && videoAssets.some((asset) => asset.id === vB) : versions.includes(vA) && versions.includes(vB);
+  if (!project || (source === 'assets' && assetsLoading)) {
+    return <div className="flex h-screen items-center justify-center bg-bg text-sm text-muted">Loading media…</div>;
+  }
+  if (!validSelection) {
     return <NotFoundPage />;
   }
 
@@ -126,23 +139,23 @@ export default function ComparePage() {
           <GoldMark size={22} />
           <div className="min-w-0">
             <p className="truncate text-xs font-bold">{project.client} — {project.name}</p>
-            <p className="text-[10px] tracking-wider text-muted/60 uppercase">{t('cmp_title')}</p>
+            <p className="text-[10px] tracking-wider text-muted/60 uppercase">{source === 'assets' ? (lang === 'ar' ? 'مقارنة فيديوهات الـAssets' : 'Asset video compare') : t('cmp_title')}</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <select value={vA} onChange={(e) => setVA(e.target.value)} className={sel} style={{ color: '#4FD1C5' }}>
-            {versions.map((v) => (
-              <option key={v} value={v}>
-                A · {v}
+            {(source === 'assets' ? videoAssets.map((asset) => ({ id: asset.id, label: asset.name })) : versions.map((version) => ({ id: version, label: version }))).map((option) => (
+              <option key={option.id} value={option.id}>
+                A · {option.label}
               </option>
             ))}
           </select>
           <span className="text-xs text-muted/50">vs</span>
           <select value={vB} onChange={(e) => setVB(e.target.value)} className={sel} style={{ color: '#FB7185' }}>
-            {versions.map((v) => (
-              <option key={v} value={v}>
-                B · {v}
+            {(source === 'assets' ? videoAssets.map((asset) => ({ id: asset.id, label: asset.name })) : versions.map((version) => ({ id: version, label: version }))).map((option) => (
+              <option key={option.id} value={option.id}>
+                B · {option.label}
               </option>
             ))}
           </select>
@@ -169,11 +182,11 @@ export default function ComparePage() {
             <div className="absolute inset-0 grid grid-cols-2 divide-x divide-line rtl:divide-x-reverse">
               <div className="relative">
                 <video ref={refA} src={srcA} className="absolute inset-0 h-full w-full object-contain" muted playsInline />
-                <span className="absolute start-3 top-3 rounded-md bg-teal-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">A · {vA}</span>
+                <span className="absolute start-3 top-3 max-w-[45%] truncate rounded-md bg-teal-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">A · {labelA}</span>
               </div>
               <div className="relative">
                 <video ref={refB} src={srcB} className="absolute inset-0 h-full w-full object-contain" muted playsInline />
-                <span className="absolute end-3 top-3 rounded-md bg-rose-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">B · {vB}</span>
+                <span className="absolute end-3 top-3 max-w-[45%] truncate rounded-md bg-rose-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">B · {labelB}</span>
               </div>
             </div>
           ) : (
@@ -204,8 +217,8 @@ export default function ComparePage() {
                   </div>
                 </>
               )}
-              <span className="absolute start-3 top-3 rounded-md bg-teal-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">A · {vA}</span>
-              <span className="absolute end-3 top-3 rounded-md bg-rose-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">B · {vB}</span>
+              <span className="absolute start-3 top-3 max-w-[45%] truncate rounded-md bg-teal-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">A · {labelA}</span>
+              <span className="absolute end-3 top-3 max-w-[45%] truncate rounded-md bg-rose-400/90 px-2 py-0.5 font-mono text-[10px] font-black text-bg">B · {labelB}</span>
             </div>
           )}
         </div>

@@ -15,7 +15,7 @@ interface Props {
   onAdd: (l: Omit<AnnotationLayer, 'id' | 'visible'>) => void;
   onUpdate: (
     id: string,
-    patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src' | 'x' | 'y' | 'w' | 'h' | 'fs' | 'opacity' | 'rotation'>>
+    patch: Partial<Pick<AnnotationLayer, 'visible' | 'text' | 'src' | 'x' | 'y' | 'w' | 'h' | 'fs' | 'opacity' | 'rotation' | 'color'>>
   ) => void;
   onDelete: (id: string) => void;
 }
@@ -160,12 +160,16 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
     });
   };
 
-  const managedList = layers.filter((l) => l.commentId === draftKey);
+  const managedList = layers;
   const selectedLayer = managedList.find((layer) => layer.id === selectedLayerId) ?? null;
 
   useEffect(() => {
-    if (selectedLayerId && !layers.some((layer) => layer.id === selectedLayerId && layer.commentId === draftKey)) setSelectedLayerId(null);
-  }, [draftKey, layers, selectedLayerId]);
+    if (selectedLayerId && !layers.some((layer) => layer.id === selectedLayerId)) {
+      setSelectedLayerId(layers.at(-1)?.id ?? null);
+    } else if (!selectedLayerId && layers.length > 0) {
+      setSelectedLayerId(layers.at(-1)?.id ?? null);
+    }
+  }, [layers, selectedLayerId]);
 
   return (
     <div ref={wrapRef} className="pointer-events-none absolute inset-0">
@@ -242,8 +246,8 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
       )}
 
       {managedList.length > 0 && (
-        <div className="pointer-events-auto absolute start-3 top-14 z-40 w-56 space-y-1 rounded-xl border border-line bg-black/75 p-2 backdrop-blur-md">
-          <p className="px-1 text-[9px] font-bold tracking-widest text-muted/80 uppercase">Layers ({managedList.length})</p>
+        <div className="pointer-events-auto absolute start-3 top-14 z-40 w-64 space-y-1 rounded-xl border border-line bg-black/85 p-2 shadow-2xl backdrop-blur-md">
+          <p className="px-1 text-[9px] font-bold tracking-widest text-muted/80 uppercase">Overlay layers ({managedList.length})</p>
           {managedList.map((l, i) => (
             <div key={l.id} className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] text-white/85 ${selectedLayerId === l.id ? 'bg-accent/20 ring-1 ring-accent/40' : 'bg-white/5'}`}>
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: l.color }} />
@@ -260,6 +264,27 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
           ))}
           {selectedLayer && (
             <div className="space-y-2 rounded-lg border border-white/10 bg-black/35 p-2 text-[9px] text-white/70">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold tracking-wider text-accent uppercase">{selectedLayer.type} properties</span>
+                <input
+                  type="color"
+                  aria-label="Layer color"
+                  value={selectedLayer.color}
+                  onChange={(event) => onUpdate(selectedLayer.id, { color: event.target.value })}
+                  className="h-6 w-8 cursor-pointer rounded border border-white/15 bg-transparent p-0.5"
+                />
+              </div>
+              {selectedLayer.type === 'text' && (
+                <label className="block">
+                  <span className="mb-1 block">Text</span>
+                  <input
+                    type="text"
+                    value={selectedLayer.text ?? ''}
+                    onChange={(event) => onUpdate(selectedLayer.id, { text: event.target.value })}
+                    className="w-full rounded border border-white/10 bg-black/50 px-2 py-1.5 text-white outline-none focus:border-accent"
+                  />
+                </label>
+              )}
               {(selectedLayer.x !== undefined || selectedLayer.y !== undefined) && (
                 <div className="grid grid-cols-2 gap-2">
                   <LayerNumber label="X" value={selectedLayer.x ?? 0} onChange={(value) => onUpdate(selectedLayer.id, { x: value })} />
@@ -275,6 +300,20 @@ export default function OverlayLayer({ tool, color, layers, draftKey, canDraw, a
               {selectedLayer.type === 'text' && (
                 <LayerNumber label="Font" value={selectedLayer.fs} min={8} onChange={(value) => onUpdate(selectedLayer.id, { fs: value })} />
               )}
+              {selectedLayer.type !== 'pen' && (
+                <div className="grid grid-cols-4 gap-1">
+                  <button type="button" title="Move left" onClick={() => onUpdate(selectedLayer.id, { x: (selectedLayer.x ?? 0) - 10 })} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">←</button>
+                  <button type="button" title="Move up" onClick={() => onUpdate(selectedLayer.id, { y: (selectedLayer.y ?? 0) - 10 })} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">↑</button>
+                  <button type="button" title="Move down" onClick={() => onUpdate(selectedLayer.id, { y: (selectedLayer.y ?? 0) + 10 })} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">↓</button>
+                  <button type="button" title="Move right" onClick={() => onUpdate(selectedLayer.id, { x: (selectedLayer.x ?? 0) + 10 })} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">→</button>
+                </div>
+              )}
+              <div className="grid grid-cols-4 gap-1">
+                <button type="button" title="Smaller" onClick={() => resizeLayer(selectedLayer, 0.9, onUpdate)} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">− Size</button>
+                <button type="button" title="Larger" onClick={() => resizeLayer(selectedLayer, 1.1, onUpdate)} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">+ Size</button>
+                <button type="button" title="Rotate left" onClick={() => onUpdate(selectedLayer.id, { rotation: (selectedLayer.rotation ?? 0) - 15 })} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">↶ 15°</button>
+                <button type="button" title="Rotate right" onClick={() => onUpdate(selectedLayer.id, { rotation: (selectedLayer.rotation ?? 0) + 15 })} className="rounded border border-white/10 py-1 hover:border-accent hover:text-accent">↷ 15°</button>
+              </div>
               <label className="block">
                 <span className="mb-1 flex justify-between"><span>Opacity</span><span>{Math.round((selectedLayer.opacity ?? 0.95) * 100)}%</span></span>
                 <input
@@ -316,6 +355,27 @@ function layerTransform(layer: AnnotationLayer) {
   const cx = (layer.x ?? 0) + (layer.w ?? 0) / 2;
   const cy = (layer.y ?? 0) + (layer.h ?? 0) / 2;
   return `rotate(${layer.rotation} ${cx} ${cy})`;
+}
+
+function resizeLayer(
+  layer: AnnotationLayer,
+  factor: number,
+  onUpdate: Props['onUpdate']
+) {
+  if (layer.type === 'text') {
+    onUpdate(layer.id, { fs: Math.max(8, layer.fs * factor) });
+    return;
+  }
+  if (layer.w !== undefined && layer.h !== undefined) {
+    const nextW = Math.max(8, layer.w * factor);
+    const nextH = Math.max(8, layer.h * factor);
+    onUpdate(layer.id, {
+      x: (layer.x ?? 0) - (nextW - layer.w) / 2,
+      y: (layer.y ?? 0) - (nextH - layer.h) / 2,
+      w: nextW,
+      h: nextH
+    });
+  }
 }
 
 function LayerNumber({ label, value, min, onChange }: { label: string; value: number; min?: number; onChange: (value: number) => void }) {

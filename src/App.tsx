@@ -20,6 +20,7 @@ const PlaceholderPage = lazy(() => import('./pages/app/PlaceholderPage'));
 const ReviewsPage = lazy(() => import('./pages/review/ReviewsPage'));
 const ReviewWorkspace = lazy(() => import('./pages/review/ReviewWorkspace'));
 const ComparePage = lazy(() => import('./pages/review/ComparePage'));
+const VideoEditorPage = lazy(() => import('./pages/editor/VideoEditorPage'));
 const SettingsPage = lazy(() => import('./pages/app/SettingsPage'));
 const CompaniesPage = lazy(() => import('./pages/app/admin/CompaniesPage'));
 const MembersPage = lazy(() => import('./pages/app/admin/MembersPage'));
@@ -59,6 +60,22 @@ export default function App() {
             element={
               <RequireAuth>
                 <ComparePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/studio/asset-compare/:pid/:assetA/:assetB"
+            element={
+              <RequireAuth>
+                <ComparePage source="assets" />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/studio/editor/:pid/:v"
+            element={
+              <RequireAuth>
+                <VideoEditorPage />
               </RequireAuth>
             }
           />

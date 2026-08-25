@@ -34,6 +34,7 @@ export default function ProjectDetailPage() {
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
   const [uploadVersionOpen, setUploadVersionOpen] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState<string | null>(null);
 
   if (!project) {
     return (
@@ -56,6 +57,12 @@ export default function ProjectDetailPage() {
 
   const latest = project.versions[0];
   const team = project.memberIds.map((mid) => memberMap.get(mid)).filter(Boolean);
+  const activeSession = state.sessions.find((session) => session.projectId === project.id && !session.endedAt);
+
+  const startReviewSession = (version = project.currentVersion) => {
+    actions.startSession(project.id, version, user.id);
+    navigate(`/studio/review/${project.id}/${version}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -126,6 +133,23 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pb-1">
+          {can('projects.edit') && (
+            <button
+              type="button"
+              onClick={() => (activeSession ? navigate(`/studio/review/${project.id}/${activeSession.version}`) : startReviewSession())}
+              className="rounded-full border border-emerald-400/50 px-4 py-2 text-xs font-bold text-emerald-300 transition-colors hover:bg-emerald-400/10"
+            >
+              {activeSession ? `● ${lang === 'ar' ? 'ادخل الجلسة' : 'Join live session'}` : `● ${lang === 'ar' ? 'ابدأ جلسة جديدة' : 'New review session'}`}
+            </button>
+          )}
+          {can('versions.upload') && (
+            <Link
+              to={`/studio/editor/${project.id}/${project.currentVersion}`}
+              className="rounded-full border border-line px-4 py-2 text-xs font-semibold text-muted transition-colors hover:border-accent hover:text-accent"
+            >
+              ✂ {lang === 'ar' ? 'مونتاج الفيديو' : 'Video editor'}
+            </Link>
+          )}
           {can('projects.edit') && (
             <>
               <button
@@ -269,9 +293,31 @@ export default function ProjectDetailPage() {
 
       {tab === 'sessions' && (
         <div className="space-y-3">
+          {can('projects.edit') && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/5 p-4">
+              <div>
+                <p className="text-sm font-bold text-ink">{lang === 'ar' ? 'جلسة Review مباشرة' : 'Live review session'}</p>
+                <p className="mt-1 text-xs text-muted">
+                  {lang === 'ar' ? 'اختر النسخة وابدأ؛ هتدخل الـReview والجلسة هتظهر Live لكل المشاركين.' : 'Choose a version and start; the review opens live for every participant.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select value={sessionVersion ?? project.currentVersion} onChange={(event) => setSessionVersion(event.target.value)} className="rounded-full border border-line bg-bg px-3 py-2 font-mono text-xs outline-none focus:border-accent">
+                  {project.versions.map((row) => <option key={row.v} value={row.v}>{row.v}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => startReviewSession(sessionVersion ?? project.currentVersion)}
+                  className="rounded-full bg-emerald-400 px-4 py-2 text-xs font-black text-bg hover:bg-emerald-300"
+                >
+                  ● {lang === 'ar' ? 'ابدأ الآن' : 'Start now'}
+                </button>
+              </div>
+            </div>
+          )}
           {state.sessions.filter((s) => s.projectId === project.id).length === 0 ? (
             <p className="rounded-xl border border-dashed border-line py-10 text-center text-xs text-muted">
-              {lang === 'ar' ? 'مفيش جلسات بعد — افتح أي نسخة في الريفيو وستبدأ جلسة تلقائيًا.' : 'No sessions yet — opening a version in review starts one automatically.'}
+              {lang === 'ar' ? 'مفيش جلسات بعد. اختار النسخة واضغط «ابدأ الآن».' : 'No sessions yet. Choose a version and press “Start now”.'}
             </p>
           ) : (
             state.sessions
@@ -376,7 +422,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {tab === 'assets' && <AssetsTab projectId={project.id} />}
+      {tab === 'assets' && <AssetsTab projectId={project.id} versions={project.versions.map((row) => row.v)} currentVersion={project.currentVersion} />}
 
       <FadeIn delay={0.1}>
         <div className="rounded-xl border border-line bg-surface p-5">
@@ -599,12 +645,16 @@ function AddMemberModal({ projectId, existingIds, onClose }: { projectId: string
   );
 }
 
-function AssetsTab({ projectId }: { projectId: string }) {
+function AssetsTab({ projectId, versions, currentVersion }: { projectId: string; versions: string[]; currentVersion: string }) {
   const { t, lang } = useLang();
   const { can } = useAuth();
-  const { assets, add, remove, updateNote } = useProjectAssets(projectId);
+  const navigate = useNavigate();
+  const { assets, add, remove, updateNote, assignToVersion } = useProjectAssets(projectId);
   const [dragOver, setDragOver] = useState(false);
   const [details, setDetails] = useState<string | null>(null);
+  const [targetVersion, setTargetVersion] = useState(currentVersion);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [assignedId, setAssignedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const canUpload = can('versions.upload');
   const detailAsset = assets.find((a) => a.id === details) ?? null;
@@ -619,6 +669,28 @@ function AssetsTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface p-4">
+        <div>
+          <p className="text-sm font-bold">{lang === 'ar' ? 'استخدم الملفات اللي رفعتها' : 'Use your uploaded assets'}</p>
+          <p className="mt-1 text-xs text-muted">{lang === 'ar' ? 'عيّن فيديو للنسخة والـReview، ضيفه للمونتاج، أو اختار فيديوهين للمقارنة.' : 'Assign a video to a review version, add it to the editor, or select two videos to compare.'}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={targetVersion} onChange={(event) => setTargetVersion(event.target.value)} className="rounded-full border border-line bg-bg px-3 py-2 font-mono text-xs outline-none focus:border-accent">
+            {versions.map((version) => <option key={version} value={version}>{version}</option>)}
+          </select>
+          <button
+            type="button"
+            disabled={compareIds.length !== 2}
+            onClick={() => navigate(`/studio/asset-compare/${projectId}/${compareIds[0]}/${compareIds[1]}`)}
+            className="rounded-full border border-accent/40 px-4 py-2 text-xs font-bold text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            ⇄ {lang === 'ar' ? `قارن (${compareIds.length}/2)` : `Compare (${compareIds.length}/2)`}
+          </button>
+          <button type="button" onClick={() => navigate(`/studio/editor/${projectId}/${targetVersion}`)} className="rounded-full bg-accent px-4 py-2 text-xs font-black text-bg">
+            ✂ {lang === 'ar' ? 'افتح المونتاج' : 'Open editor'}
+          </button>
+        </div>
+      </div>
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -660,16 +732,23 @@ function AssetsTab({ projectId }: { projectId: string }) {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           <AnimatePresence>
             {assets.map((a, i) => (
-              <motion.button
+              <motion.div
                 key={a.id}
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ delay: i * 0.04 }}
-                onClick={() => setDetails(a.id)}
-                className="group overflow-hidden rounded-xl border border-line bg-surface text-start transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/50"
+                className={`group overflow-hidden rounded-xl border bg-surface text-start transition-all duration-300 hover:-translate-y-0.5 ${compareIds.includes(a.id) ? 'border-accent ring-2 ring-accent/20' : 'border-line hover:border-accent/50'}`}
               >
-                <div className="relative aspect-video w-full overflow-hidden bg-black/40">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetails(a.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') setDetails(a.id);
+                  }}
+                  className="relative block aspect-video w-full overflow-hidden bg-black/40 text-start"
+                >
                   {a.isImage ? (
                     <img src={a.url} alt={a.name} className="absolute inset-0 h-full w-full object-cover" />
                   ) : a.isVideo ? (
@@ -713,8 +792,32 @@ function AssetsTab({ projectId }: { projectId: string }) {
                     {a.name}
                   </p>
                   <p className="mt-0.5 font-mono text-[10px] text-muted">{formatSize(a.size)}</p>
+                  {a.isVideo && (
+                    <div className="mt-3 grid gap-1.5">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await assignToVersion(a.id, targetVersion);
+                          setAssignedId(a.id);
+                        }}
+                        className="rounded-md border border-emerald-400/35 px-2 py-1.5 text-[10px] font-bold text-emerald-300 hover:bg-emerald-400/10"
+                      >
+                        {assignedId === a.id ? '✓ ' : '▶ '}{lang === 'ar' ? `استخدم في Review ${targetVersion}` : `Use in Review ${targetVersion}`}
+                      </button>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button type="button" onClick={() => navigate(`/studio/editor/${projectId}/${targetVersion}?asset=${a.id}`)} className="rounded-md border border-line px-2 py-1.5 text-[10px] text-muted hover:border-accent hover:text-accent">✂ {lang === 'ar' ? 'مونتاج' : 'Edit'}</button>
+                        <button
+                          type="button"
+                          onClick={() => setCompareIds((current) => current.includes(a.id) ? current.filter((id) => id !== a.id) : current.length < 2 ? [...current, a.id] : [current[1], a.id])}
+                          className="rounded-md border border-line px-2 py-1.5 text-[10px] text-muted hover:border-accent hover:text-accent"
+                        >
+                          {compareIds.includes(a.id) ? '✓ ' : '+ '}{lang === 'ar' ? 'مقارنة' : 'Compare'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </motion.button>
+              </motion.div>
             ))}
           </AnimatePresence>
         </div>

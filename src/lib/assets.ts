@@ -25,11 +25,13 @@ function decorateOne(r: AssetRecord): ProjectAsset {
 
 export function useProjectAssets(projectId: string | undefined) {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
+  const [loading, setLoading] = useState(true);
   const urlsRef = useRef<string[]>([]);
   const refreshIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
+    setLoading(true);
     const refreshId = ++refreshIdRef.current;
     try {
       const recs = await mediaStorage.listProjectAssets(projectId);
@@ -40,6 +42,8 @@ export function useProjectAssets(projectId: string | undefined) {
       setAssets(decorated);
     } catch (err) {
       console.error('[assets] load failed', err);
+    } finally {
+      if (refreshId === refreshIdRef.current) setLoading(false);
     }
   }, [projectId]);
 
@@ -108,5 +112,13 @@ export function useProjectAssets(projectId: string | undefined) {
     []
   );
 
-  return { assets, add, remove, updateNote };
+  const assignToVersion = useCallback(
+    async (assetId: string, version: string) => {
+      if (!projectId) return;
+      await mediaStorage.assignAssetToVersion(projectId, version, assetId);
+    },
+    [projectId]
+  );
+
+  return { assets, loading, add, remove, updateNote, assignToVersion };
 }

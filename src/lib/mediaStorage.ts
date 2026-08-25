@@ -17,6 +17,7 @@ export interface MediaStorageProvider {
   deleteAsset(id: string): Promise<void>;
   getVersionVideo(projectId: string, version: string): Promise<VersionVideoRecord | undefined>;
   saveVersionVideo(projectId: string, version: string, file: File): Promise<void>;
+  assignAssetToVersion(projectId: string, version: string, assetId: string): Promise<VersionVideoRecord>;
 }
 
 class IndexedDbMediaStorage implements MediaStorageProvider {
@@ -50,6 +51,23 @@ class IndexedDbMediaStorage implements MediaStorageProvider {
       active: true,
       createdAt: Date.now()
     });
+  }
+
+  async assignAssetToVersion(projectId: string, version: string, assetId: string) {
+    const asset = await this.getAsset(assetId);
+    if (!asset || asset.projectId !== projectId || !asset.type.startsWith('video/')) {
+      throw new Error('Only a video asset from this project can be assigned to a version.');
+    }
+    const record: VersionVideoRecord = {
+      id: `${projectId}__${version}`,
+      name: asset.name,
+      type: asset.type || 'video/mp4',
+      blob: asset.blob,
+      active: true,
+      createdAt: Date.now()
+    };
+    await idb.put('video', record);
+    return record;
   }
 }
 

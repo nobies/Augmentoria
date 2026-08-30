@@ -17,6 +17,7 @@ import NotFoundPage from '../NotFoundPage';
 import { renderCommentThumbnail, saveCommentThumbnail } from '../../lib/commentThumbnail';
 import { connectReviewRealtime } from '../../lib/realtime';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import ShareReviewDialog from './ShareReviewDialog';
 
 const COLORS = ['#FF4D4D', '#FFB020', '#4FD1C5', '#A78BFA', '#FB7185', '#34D399', '#FFFFFF'];
 const DRAFT = '__draft';
@@ -69,7 +70,7 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tool, setTool] = useState<LayerType | 'select'>('select');
   const [color, setColor] = useState(COLORS[0]);
-  const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [customVideo, setCustomVideo] = useState<{ url: string; name: string } | null>(null);
   const [aspect, setAspect] = useState(16 / 9);
   const [arOverride, setArOverride] = useState<string | null>(null);
@@ -476,8 +477,6 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
   const usingDemo = !customVideo && !pickedAsset && Boolean(fallbackDemo);
   const src = customVideo?.url ?? pickedAsset?.url ?? fallbackDemo;
 
-  const shareUrl = `${window.location.origin}/review/${project.id}/${resolvedVersion}`;
-
   return (
     <div className="review-workspace flex h-[100dvh] overflow-hidden flex-col bg-bg text-ink">
       {!guest && (
@@ -530,19 +529,36 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
             <div className="mt-0.5 flex items-center gap-2">
               <span className="text-[10px] tracking-wider text-muted/60 uppercase">{pro ? (lang === 'ar' ? 'مراجعة احترافية موحدة' : 'Unified Pro Review') : t('nav_reviews')}</span>
               <div className="flex gap-1">
-                {project.versions.map((ver) => (
-                  <Link
-                    key={ver.v}
-                    to={`/${guest ? 'review' : 'studio/review'}/${project.id}/${ver.v}`}
-                    className={`rounded px-1.5 py-0.5 font-mono text-[9px] font-bold transition-colors ${
-                      ver.v !== version ? 'max-sm:hidden' : ''
-                    } ${
-                      ver.v === version ? 'bg-accent/15 text-accent' : 'text-muted/60 hover:text-accent'
-                    }`}
-                  >
-                    {ver.v}
-                  </Link>
-                ))}
+                {project.versions.map((ver) => {
+                  const className = `rounded px-1.5 py-0.5 font-mono text-[9px] font-bold transition-colors ${
+                    ver.v !== version ? 'max-sm:hidden' : ''
+                  } ${ver.v === version ? 'bg-accent/15 text-accent' : 'text-muted/35'}`;
+
+                  return guest ? (
+                    <span
+                      key={ver.v}
+                      className={className}
+                      aria-current={ver.v === version ? 'page' : undefined}
+                      title={
+                        ver.v === version
+                          ? undefined
+                          : lang === 'ar'
+                            ? 'اطلب رابط مشاركة خاصًا بهذه النسخة'
+                            : 'Ask for a share link for this version'
+                      }
+                    >
+                      {ver.v}
+                    </span>
+                  ) : (
+                    <Link
+                      key={ver.v}
+                      to={`/studio/review/${project.id}/${ver.v}`}
+                      className={`${className} ${ver.v === version ? '' : 'hover:text-accent'}`}
+                    >
+                      {ver.v}
+                    </Link>
+                  );
+                })}
               </div>
               {guest && <span className="hidden text-[10px] text-muted/50 sm:inline">· {t('rv_guest_mode')}</span>}
             </div>
@@ -673,16 +689,11 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
           )}
           {canShare && (
             <button
-              onClick={() => {
-                void navigator.clipboard.writeText(shareUrl);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1600);
-              }}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                copied ? 'border-emerald-400/50 text-emerald-300' : 'border-line text-muted hover:border-accent hover:text-accent'
-              }`}
+              type="button"
+              onClick={() => setShareOpen(true)}
+              className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted transition-colors hover:border-accent hover:text-accent"
             >
-              {copied ? `✓ ${t('rv_copied')}` : `🔗 ${t('rv_share')}`}
+              🔗 {t('rv_share')}
             </button>
           )}
 
@@ -855,6 +866,14 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
           )}
         </div>
       )}
+
+      <ShareReviewDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        projectId={project.id}
+        version={resolvedVersion}
+        lang={lang}
+      />
 
       {/* Compare picker modal */}
       {compareOpen && (

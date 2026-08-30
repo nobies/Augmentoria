@@ -19,6 +19,7 @@ const ClientsPage = lazy(() => import('./pages/app/clients/ClientsPage'));
 const ClientDetailPage = lazy(() => import('./pages/app/clients/ClientDetailPage'));
 const ReviewsPage = lazy(() => import('./pages/review/ReviewsPage'));
 const ReviewWorkspace = lazy(() => import('./pages/review/ReviewWorkspace'));
+const GuestReviewRoute = lazy(() => import('./pages/review/GuestReviewRoute'));
 const ComparePage = lazy(() => import('./pages/review/ComparePage'));
 const VideoEditorPage = lazy(() => import('./pages/editor/VideoEditorPage'));
 const ProReviewBridge = lazy(() => import('./pages/review/ProReviewBridge'));
@@ -51,7 +52,7 @@ export default function App() {
       >
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/review/:pid/:v" element={<ReviewWorkspace mode="guest" experience="pro" />} />
+          <Route path="/review/:pid/:v" element={<GuestReviewRoute />} />
           <Route
             path="/studio/review/:pid/:v"
             element={

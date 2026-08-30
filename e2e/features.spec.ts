@@ -77,3 +77,16 @@ test('comment composer offers checklist items that persist after posting', async
 
   await expect(page.getByText('Check audio mix').first()).toBeVisible();
 });
+
+test('share action explains the secure link, code, and expiry before creating it', async ({ page }) => {
+  await authenticate(page, AM_USER);
+  await page.goto('/studio/review/p-vodafone/V04');
+
+  await page.getByRole('button', { name: /Share|مشاركة/i }).click();
+
+  const dialog = page.getByRole('dialog', { name: /Review link with an access code|رابط مراجعة بكود دخول/i });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/six-digit code|6 أرقام/i)).toBeVisible();
+  await expect(dialog.getByRole('combobox')).toHaveValue('7');
+  await expect(dialog.getByRole('button', { name: /Create link and code|إنشاء رابط وكود/i })).toBeVisible();
+});

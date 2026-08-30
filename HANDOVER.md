@@ -1,7 +1,7 @@
 # Augmentoria — Project Handover
 
 **آخر تحديث:** 31 أغسطس 2026
-**حالة المنتج:** Cloud preview منشورة — الواجهة وSupabase Realtime وDatabase foundation متاحة أونلاين؛ Auth وDurable app data وGoogle Drive ما زالت مراحل لاحقة
+**حالة المنتج:** Cloud preview منشورة — الواجهة وSupabase Realtime وDatabase foundation وروابط Review الآمنة بكود دخول متاحة؛ Auth وDurable app data وGoogle Drive ما زالت مراحل لاحقة
 **الفرع الحالي وقت إعداد الملف:** `codex/freeframe-review-integration`
 
 > هذا الملف هو المرجع التنفيذي لحالة المشروع الحالية. الرؤية الأصلية موجودة خارج المشروع في `C:\tmp\plan.txt`، أما هذا الملف فيفصل بين ما هو مطلوب نظريًا وما تم تنفيذه فعليًا في الكود.
@@ -85,6 +85,8 @@ Assets → Edit → Version → Review → Comments → Revision → Approval �
 - GitHub: الفرع `codex/freeframe-review-integration` في `nobies/Augmentoria`.
 - Vercel: Preview تلقائية من الفرع، مع إعداد Vite SPA وdeep-link rewrites في `vercel.json`.
 - Supabase: مشروع `augmentoria` في `eu-west-1`، مع 22 جدولًا للـmulti-tenant domain وكل الجداول العامة عليها RLS.
+- مشاركة الـReview: الرابط العام لا يتطلب حسابًا داخل التطبيق، لكنه يحتاج token عشوائي + كود منفصل من 6 أرقام. التوكن والكود مخزنان كـhash، والصلاحية 1–30 يومًا، وبعد 10 محاولات خاطئة يُقفل الرابط 15 دقيقة.
+- `VITE_PUBLIC_APP_URL` يحدد الـorigin الثابت الذي تُنشأ عليه روابط المشاركة؛ وفي غيابه يستخدم التطبيق الـorigin المفتوح حاليًا.
 - دوال RLS الحساسة نُقلت إلى schema خاصة وغير معروضة كـRPC للزائر.
 - جداول الـlegacy محفوظة للرجوع فقط ومغلقة أمام `anon` و`authenticated`.
 - أضيفت سياسات `project_memberships` وفهارس المفاتيح الأجنبية للجداول النشطة.
@@ -110,6 +112,9 @@ Assets → Edit → Version → Review → Comments → Revision → Approval �
 | `src/lib/assets.ts` | تحميل وعرض وإدارة Assets المشروع |
 | `src/lib/realtime.ts` | Supabase Realtime/WebSocket/BroadcastChannel client |
 | `src/lib/supabase.ts` | Supabase browser client باستخدام publishable key فقط |
+| `src/lib/reviewShare.ts` | إنشاء رابط Review آمن والتحقق من كوده عبر Supabase RPC |
+| `src/pages/review/GuestReviewRoute.tsx` | بوابة الضيف بالكود بدون Registration |
+| `src/pages/review/ShareReviewDialog.tsx` | إنشاء ونسخ الرابط والكود وتحديد مدة الصلاحية |
 | `supabase/migrations/` | RLS hardening وسياسات العضويات والفهارس |
 | `vercel.json` | Vite build وSPA routing على Vercel |
 | `src/pages/review/ReviewWorkspace.tsx` | شاشة الـReview الموحدة |
@@ -500,8 +505,8 @@ npm run realtime:dev
 - ESLint: ناجح بدون Warnings.
 - TypeScript: ناجح.
 - Production build: ناجح.
-- Unit tests: **27/27 ناجحة**.
-- End-to-End tests: **97/97 ناجحة**.
+- Unit tests: **31/31 ناجحة**.
+- End-to-End tests: **97/97 ناجحة** في الـfull run، واختبار نافذة المشاركة الآمنة الجديد ناجح ضمن `features.spec.ts` (الإجمالي الحالي 98 اختبارًا).
 - Realtime smoke test: ناجح.
 - Role matrix: جميع الأدوار السبعة + Public guest ناجحون.
 
@@ -549,7 +554,8 @@ npm run check:all
 - تاريخ الفرع المحلي و`main` الموجود على GitHub غير مرتبطين؛ لذلك لم يتم force-push أو استبدال `main`.
 - Vercel Preview تبنى تلقائيًا من الفرع ويستخدم alias ثابتًا خاصًا به.
 - Production الحالية المرتبطة بـ`main` لم تتغير.
-- Supabase migrations طبقت بنجاح، وأصبح Security Advisor بلا تحذيرات schema/RLS؛ بقي إعداد Dashboard واحد لتفعيل leaked-password protection.
+- Supabase migrations طبقت بنجاح، ومنها `secure_review_share_links`. الـSecurity Advisor يعرض تحذيرًا مقصودًا لأن RPC التحقق متاح للضيف، وتحذيرًا مؤقتًا على RPC الإنشاء حتى استبدال الـLocal Auth بـSupabase Auth؛ بقي أيضًا تفعيل leaked-password protection.
+- روابط الـPreview لن تكون عامة فعلًا إلا بعد إيقاف Vercel `Require Log In` لهذا المشروع؛ بوابة الكود داخل التطبيق هي الحماية المقصودة للضيف.
 - لا يجب دمج الفرع في `main` قبل مراجعة الفرق المعماري واختيار طريقة دمج التاريخين بأمان.
 
 ---
@@ -617,7 +623,7 @@ npm run check:all
 - تكون كل البيانات والملفات Durable ومشتركة بين الأجهزة.
 - Google Drive يعمل كمصدر أصل حقيقي مع Proxy delivery مناسب.
 - Realtime يعمل عبر WSS مع reconnect وحفظ الأحداث.
-- Share links آمنة وقابلة للإلغاء.
+- Share links آمنة بكود وصلاحية وقفل للمحاولات، مع واجهة Admin للإلغاء وإدارة الروابط النشطة.
 - Reports ثابتة وقابلة لإعادة الإنتاج.
 - يوجد Staging، monitoring، backups، security review، وCI/CD.
 

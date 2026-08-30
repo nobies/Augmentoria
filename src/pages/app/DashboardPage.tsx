@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLang } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
-import { useAppState, STATUS_CLASS, STATUS_LABEL } from '../../lib/store';
+import { useAppState, STATUS_CLASS, STATUS_LABEL, visibleProjects } from '../../lib/store';
 import type { ProjectStatus } from '../../lib/store';
 import { CountUp, FadeIn, LogoChip, brandColor } from '../../components/ui/bits';
 import { clientLogoUrl } from '../../lib/clients';
@@ -49,10 +49,11 @@ export default function DashboardPage() {
   const [newOpen, setNewOpen] = useState(false);
   const memberMap = new Map(state.members.map((m) => [m.id, m]));
 
-  const active = state.projects.filter((p) => p.status !== 'approved' && !p.archived);
-  const waitReview = state.projects.filter((p) => (p.status === 'review' || p.status === 'changes') && !p.archived);
-  const waitClient = state.projects.filter((p) => p.status === 'review' && !p.archived);
-  const approved = state.projects.filter((p) => p.status === 'approved');
+  const projects = visibleProjects(state, user);
+  const active = projects.filter((p) => p.status !== 'approved' && !p.archived);
+  const waitReview = projects.filter((p) => (p.status === 'review' || p.status === 'changes') && !p.archived);
+  const waitClient = projects.filter((p) => p.status === 'review' && !p.archived);
+  const approved = projects.filter((p) => p.status === 'approved');
 
   const stats = [
     { label: 'dash_stat_active', value: active.length },
@@ -63,7 +64,7 @@ export default function DashboardPage() {
 
   const attention = [...waitReview].sort((a, b) => (b.versions[0]?.open ?? 0) - (a.versions[0]?.open ?? 0));
 
-  const activity = state.projects.filter((p) => !p.archived).flatMap((p) => p.activity.map((a) => ({ ...a, project: p.name })));
+  const activity = projects.filter((p) => !p.archived).flatMap((p) => p.activity.map((a) => ({ ...a, project: p.name })));
 
   return (
     <div className="space-y-8">
@@ -119,7 +120,7 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {state.projects.slice(0, 4).map((p, i) => {
+            {projects.slice(0, 4).map((p, i) => {
               const v = p.versions[0];
               const total = (v?.open ?? 0) + (v?.resolved ?? 0);
               const pct = total ? Math.round(((v?.resolved ?? 0) / total) * 100) : 100;

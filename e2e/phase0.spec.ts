@@ -10,12 +10,12 @@ const DEMO_USER = {
 };
 
 const CLIENT_USER = {
-  id: 'u-client',
-  name: 'Client Reviewer',
-  email: 'client@example.com',
+  id: 'u-sh',
+  name: 'Sara Hassan',
+  email: 'sara@vodafone.com',
   roleId: 'client',
   companyId: 'c-aroma',
-  title: 'Client'
+  title: 'Client Reviewer'
 };
 
 async function authenticate(page: import('@playwright/test').Page, user = DEMO_USER) {
@@ -154,6 +154,8 @@ test('live review starts on demand and synchronizes the playhead across tabs', a
   const startLive = page.getByRole('button', { name: /Start Live|ابدأ Live/i });
   await expect(startLive).toBeVisible();
   await startLive.click();
+  // New: dialog appears — click Go live now (title is optional)
+  await page.getByRole('button', { name: /Go live now|ابدأ الآن/i }).click();
   await expect(page.getByRole('button', { name: /End session|إنهاء الجلسة/i })).toBeVisible();
 
   const client = await context.newPage();
@@ -300,19 +302,92 @@ test('project sessions tab starts a live review on the selected version', async 
   await expect(page.getByRole('button', { name: /End session|إنهاء الجلسة/i })).toBeVisible();
 });
 
-test('project exposes isolated Pro Review without replacing legacy review', async ({ page }) => {
+test('project exposes one canonical unified review without a duplicate engine login', async ({ page }) => {
   await authenticate(page);
   await page.goto('/app/projects/p-vodafone');
   await page.getByRole('button', { name: /Versions|النسخ/i }).click();
 
-  const proReview = page.getByRole('link', { name: /Pro Review/i }).first();
-  await expect(proReview).toBeVisible();
-  await proReview.click();
+  const review = page.getByRole('link', { name: /^Review$/i }).first();
+  await expect(review).toBeVisible();
+  await expect(page.getByRole('link', { name: /Pro Review/i })).toHaveCount(0);
+  await review.click();
 
-  await expect(page).toHaveURL('/studio/pro-review/p-vodafone/V04');
-  await expect(page.getByText('Augmentoria Pro Review · FreeFrame Engine')).toBeVisible();
-  await expect(page.getByRole('link', { name: /Legacy review/i })).toHaveAttribute(
-    'href',
-    '/studio/review/p-vodafone/V04',
-  );
+  await expect(page).toHaveURL('/studio/review/p-vodafone/V04');
+  await expect(page.getByText('Unified Pro Review')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Unified settings|الإعدادات الموحدة/i })).toHaveAttribute('href', '/app/settings');
+  await expect(page.locator('iframe')).toHaveCount(0);
+});
+
+test('compare can return directly to the active live review session', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/studio/review/p-vodafone/V04');
+  await page.getByRole('button', { name: /Start Live|ابدأ Live/i }).click();
+  // New: dialog appears — click Go live now (title is optional)
+  await page.getByRole('button', { name: /Go live now|ابدأ الآن/i }).click();
+  await page.goto('/studio/compare/p-vodafone/V03/V04');
+
+  const backToSession = page.getByRole('button', { name: /Back to session|العودة للجلسة/i });
+  await expect(backToSession).toBeVisible();
+  await backToSession.click();
+  await expect(page).toHaveURL('/studio/review/p-vodafone/V04');
+  await expect(page.getByRole('button', { name: /End session|إنهاء الجلسة/i })).toBeVisible();
+});
+
+test('archived review sessions reopen with saved comments and their event log', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/app/projects/p-vodafone');
+  await page.getByRole('button', { name: /Sessions|الجلسات/i }).click();
+  await page.getByRole('button', { name: /View archive|عرض الأرشيف/i }).first().click();
+
+  const archive = page.getByRole('dialog');
+  await expect(archive.getByText(/Archived session|جلسة محفوظة/i)).toBeVisible();
+  await expect(archive.getByText(/Saved comments|التعليقات المحفوظة/i)).toBeVisible();
+  await expect(archive.getByText(/Session event log|سجل ما حدث/i)).toBeVisible();
+  await expect(archive.locator('a[href*="?comment="]').first()).toHaveAttribute('href', /\/studio\/review\/p-vodafone\/V04\?comment=/);
+});
+
+test('visual-only feedback, free transform, and timeline drag all work directly', async ({ page }) => {
+  await authenticate(page);
+  await page.goto('/studio/review/p-vodafone/V04');
+  const video = page.locator('video');
+  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).duration || 0)).toBeGreaterThan(0);
+
+  const timeline = page.getByRole('slider', { name: 'Review timeline' });
+  await expect.poll(async () => Number(await timeline.getAttribute('aria-valuemax'))).toBeGreaterThan(0);
+  const timelineBox = await timeline.boundingBox();
+  if (!timelineBox) throw new Error('Review timeline has no bounding box');
+  await page.mouse.move(timelineBox.x + timelineBox.width * 0.15, timelineBox.y + timelineBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(timelineBox.x + timelineBox.width * 0.72, timelineBox.y + timelineBox.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => video.evaluate((element) => {
+    const media = element as HTMLVideoElement;
+    return media.duration ? media.currentTime / media.duration : 0;
+  })).toBeGreaterThan(0.65);
+
+  await page.getByTitle(/Text|نص/i).click();
+  const videoBox = await video.boundingBox();
+  if (!videoBox) throw new Error('Review video has no bounding box');
+  await page.mouse.click(videoBox.x + videoBox.width / 2, videoBox.y + videoBox.height / 2);
+  await page.getByPlaceholder('Type…').fill('Move me');
+  await page.getByPlaceholder('Type…').press('Enter');
+  await page.getByRole('button', { name: /Done drawing|تم الرسم/i }).click();
+
+  const transformBox = page.getByTestId('free-transform-box');
+  await expect(transformBox).toBeVisible();
+  await expect(page.getByTestId('free-transform-resize-se')).toBeVisible();
+  await expect(page.getByTestId('free-transform-rotate')).toBeVisible();
+  const before = await transformBox.boundingBox();
+  if (!before) throw new Error('Free transform box has no bounding box');
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2 + 45, before.y + before.height / 2 + 20, { steps: 5 });
+  await page.mouse.up();
+  const after = await transformBox.boundingBox();
+  expect(after?.x ?? 0).toBeGreaterThan(before.x + 20);
+
+  const post = page.getByRole('button', { name: /Post|نشر/i });
+  await expect(post).toBeEnabled();
+  await post.click();
+  await expect(page.getByText(/Visual feedback|تعليق بصري/i).first()).toBeVisible();
 });

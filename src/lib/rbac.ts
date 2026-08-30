@@ -57,6 +57,7 @@ export interface DemoUser {
   email: string;
   roleId: RoleId;
   companyId: string;
+  accountType?: 'internal' | 'client';
   title?: string;
   avatar?: string;
   extraPerms?: Perm[];
@@ -69,7 +70,8 @@ export const DEMO_USERS: DemoUser[] = [
   { id: 'u-na', name: 'Nour Adel', email: 'nour@aroma.studio', roleId: 'assistant', companyId: 'c-aroma', title: 'AM Assistant' },
   { id: 'u-ok', name: 'Omar Khaled', email: 'omar@aroma.studio', roleId: 'ops', companyId: 'c-aroma', title: 'Operations Manager' },
   { id: 'u-sh', name: 'Sara Hassan', email: 'sara@vodafone.com', roleId: 'client', companyId: 'c-aroma', title: 'Client Reviewer' },
-  { id: 'u-ae', name: 'Ahmed Elkady', email: 'ahmed@aroma.studio', roleId: 'designer', companyId: 'c-aroma', title: 'Senior Motion Designer' }
+  { id: 'u-ae', name: 'Ahmed Elkady', email: 'ahmed@aroma.studio', roleId: 'designer', companyId: 'c-aroma', title: 'Senior Motion Designer' },
+  { id: 'u-ns', name: 'Nada Sherif', email: 'nada@socializr.app', roleId: 'company_admin', companyId: 'c-socializr', title: 'Studio Manager' }
 ];
 
 export function effectivePerms(roleId: RoleId, extra?: Perm[]): Set<Perm> {

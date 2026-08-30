@@ -48,4 +48,42 @@ describe('RequireAuth', () => {
     renderRoutes();
     expect(screen.getByText('Protected projects')).toBeInTheDocument();
   });
+
+  it('locks out a suspended member even with a stored session', async () => {
+    localStorage.setItem(
+      'augmentoria-auth-user',
+      JSON.stringify({
+        id: 'u-mw',
+        name: 'Mohamed Wageeh',
+        email: 'm.wageeh@aroma.studio',
+        roleId: 'am',
+        companyId: 'c-aroma'
+      })
+    );
+    const { actions } = await import('../lib/store');
+    actions.setMemberStatus('u-mw', 'suspended', 'u-ca');
+
+    renderRoutes();
+    expect(screen.getByText('Login screen')).toBeInTheDocument();
+    expect(screen.queryByText('Protected projects')).not.toBeInTheDocument();
+  });
+
+  it('locks out a session whose member record was removed', async () => {
+    localStorage.setItem(
+      'augmentoria-auth-user',
+      JSON.stringify({
+        id: 'u-mw',
+        name: 'Mohamed Wageeh',
+        email: 'm.wageeh@aroma.studio',
+        roleId: 'am',
+        companyId: 'c-aroma'
+      })
+    );
+    const { actions } = await import('../lib/store');
+    actions.removeMember('u-mw', 'u-ca');
+
+    renderRoutes();
+    expect(screen.getByText('Login screen')).toBeInTheDocument();
+    expect(screen.queryByText('Protected projects')).not.toBeInTheDocument();
+  });
 });

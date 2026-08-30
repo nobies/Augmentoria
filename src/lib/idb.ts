@@ -1,4 +1,15 @@
-export type Collection = 'hero' | 'auth' | 'page' | 'video' | 'assets';
+export type Collection = 'hero' | 'auth' | 'page' | 'video' | 'assets' | 'commentThumb';
+
+export type AssetCategory =
+  | 'video'
+  | 'image'
+  | 'audio'
+  | 'document'
+  | 'presentation'
+  | 'storyboard'
+  | 'script'
+  | 'brief'
+  | 'other';
 
 export interface AssetRecord {
   id: string;
@@ -7,7 +18,11 @@ export interface AssetRecord {
   type: string;
   size: number;
   blob: Blob;
+  category?: AssetCategory;
+  title?: string;
   note?: string;
+  platform?: string;
+  assignedVersion?: string;
   createdAt: number;
 }
 
@@ -21,14 +36,15 @@ export interface ImageRecord {
 }
 
 const DB_NAME = 'augmentoria';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const STORES: Record<Collection, string> = {
   hero: 'hero-images',
   auth: 'auth-images',
   page: 'page-images',
   video: 'version-videos',
-  assets: 'project-assets'
+  assets: 'project-assets',
+  commentThumb: 'comment-thumbnails'
 };
 
 function openDb(): Promise<IDBDatabase> {

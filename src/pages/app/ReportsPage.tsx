@@ -2,18 +2,21 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
-import { clientLogoSrc, useAppState } from '../../lib/store';
-import { exportCommentsCSV, exportSessionJSON } from '../../lib/exportReview';
+import { clientLogoSrc, projectInUserScope, useAppState, visibleClients, visibleProjects } from '../../lib/store';
+import NotFoundPage from '../NotFoundPage';
+import { exportCommentsCSV, exportCommentsXLSX, exportSessionJSON } from '../../lib/exportReview';
 import { FadeIn, LogoChip } from '../../components/ui/bits';
 
 export default function ReportsPage() {
   const { t, lang } = useLang();
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const state = useAppState();
-  const [pid, setPid] = useState(state.projects[0]?.id ?? '');
+  const projects = visibleProjects(state, user);
+  const clients = visibleClients(state, user);
+  const [pid, setPid] = useState(projects[0]?.id ?? '');
 
-  const project = state.projects.find((p) => p.id === pid);
-  const clientRec = state.clients.find((c) => c.id === project?.clientId || c.name === project?.client);
+  const project = projects.find((p) => p.id === pid);
+  const clientRec = clients.find((c) => c.id === project?.clientId || c.name === project?.client);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -25,7 +28,7 @@ export default function ReportsPage() {
       <div className="space-y-3 rounded-xl border border-line bg-surface p-5">
         <label className="block text-[11px] tracking-wider text-muted uppercase">{t('prj_filter_client')}</label>
         <select value={pid} onChange={(e) => setPid(e.target.value)} className="w-full rounded-lg border border-line bg-bg px-4 py-2.5 text-sm outline-none focus:border-accent">
-          {state.projects.map((p) => (
+          {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.client} — {p.name}
             </option>
@@ -58,9 +61,11 @@ export default function ReportsPage() {
               <p className="text-sm font-bold">{clientRec.name}</p>
               <p className="truncate text-[11px] text-muted">{lang === 'ar' ? 'اللوجو والبيانات هتظهر في رأس التقرير.' : 'Logo & details appear in the report header.'}</p>
             </div>
-            <Link to={`/app/clients/${clientRec.id}`} className="ms-auto text-xs text-accent hover:underline">
-              {t('client_edit')} →
-            </Link>
+            {can('clients.manage') && (
+              <Link to={`/app/clients/${clientRec.id}`} className="ms-auto text-xs text-accent hover:underline">
+                {t('client_edit')} →
+              </Link>
+            )}
           </div>
         </FadeIn>
       )}
@@ -70,12 +75,12 @@ export default function ReportsPage() {
 
 export function ReportView() {
   const { t, lang } = useLang();
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const { pid, v } = useParams();
   const state = useAppState();
   const project = state.projects.find((p) => p.id === pid);
   const clientRec = state.clients.find((c) => c.id === project?.clientId || c.name === project?.client);
-  const company = state.companies[0];
+  const company = project ? state.companies.find((item) => item.id === project.companyId) ?? state.companies[0] : undefined;
   const version = v ?? project?.currentVersion ?? 'V01';
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
   const [authorFilter, setAuthorFilter] = useState('all');
@@ -84,16 +89,9 @@ export function ReportView() {
   const [includeThumbnails, setIncludeThumbnails] = useState(true);
   const [includeApproval, setIncludeApproval] = useState(true);
   const [includeSessions, setIncludeSessions] = useState(true);
+  const [clientMode, setClientMode] = useState(false);
 
-  if (!project) {
-    return (
-      <div className="py-24 text-center">
-        <Link to="/app/reports" className="text-sm text-accent hover:underline">
-          ← {t('page_reports')}
-        </Link>
-      </div>
-    );
-  }
+  if (!project || !projectInUserScope(state, user, project)) return <NotFoundPage />;
 
   const memberMap = new Map(state.members.map((m) => [m.id, m]));
   const allComments = state.comments
@@ -126,6 +124,15 @@ export function ReportView() {
           ← {t('page_reports')}
         </Link>
         <div className="flex gap-2">
+          <button
+            onClick={() => setClientMode((m) => !m)}
+            className={`rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
+              clientMode ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:border-accent hover:text-accent'
+            }`}
+            title={t('rpt_client_note')}
+          >
+            🎯 {t('rpt_client_summary')}
+          </button>
           <button onClick={() => window.print()} disabled={!can('reports.export')} className="rounded-full bg-accent px-5 py-2 text-xs font-bold text-bg transition-colors hover:bg-accent-dim disabled:opacity-40">
             🖨 {lang === 'ar' ? 'طباعة / حفظ PDF' : 'Print / Save PDF'}
           </button>
@@ -141,6 +148,19 @@ export function ReportView() {
             className="rounded-full border border-line px-4 py-2 text-xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-40"
           >
             📊 CSV
+          </button>
+          <button
+            onClick={() =>
+              void exportCommentsXLSX(
+                comments.map((c) => ({ ...c, replies: includeReplies ? c.replies : [], layerCount: includeDrawings ? layersBy(c.id).length : 0 })),
+                (id) => memberMap.get(id)?.name ?? 'Guest',
+                `${project.client}-${project.name}-${version}`
+              )
+            }
+            disabled={!can('reports.export')}
+            className="rounded-full border border-line px-4 py-2 text-xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-40"
+          >
+            📗 Excel
           </button>
           <button
             onClick={() =>
@@ -165,6 +185,7 @@ export function ReportView() {
         </div>
       </div>
 
+      {!clientMode && (
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3 print:hidden">
         <span className="text-[10px] font-bold tracking-widest text-muted uppercase">Report filters</span>
         <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | 'open' | 'resolved')} className="rounded-lg border border-line bg-bg px-3 py-1.5 text-xs outline-none focus:border-accent">
@@ -191,6 +212,7 @@ export function ReportView() {
         ))}
         <span className="ms-auto text-[10px] text-muted">{comments.length} / {allComments.length} comments</span>
       </div>
+      )}
 
       <div id="report-sheet" className="rounded-2xl border border-line bg-white p-8 text-black shadow-xl print:rounded-none print:border-0 print:shadow-none lg:p-12">
         <header className="flex items-start justify-between border-b-2 border-black/80 pb-6">
@@ -199,7 +221,8 @@ export function ReportView() {
             <div>
               <p className="text-[10px] font-bold tracking-[0.25em] text-black/50 uppercase">{clientRec?.name}</p>
               <h1 className="font-display text-2xl font-black">{project.name}</h1>
-              <p className="mt-0.5 text-xs text-black/60">Review Report — Version {version}</p>
+              <p className="mt-0.5 text-xs text-black/60">{clientMode ? t('rpt_client_summary') : lang === 'ar' ? 'تقرير مراجعة' : 'Review Report'} — {version}</p>
+              {clientMode && <p className="mt-0.5 text-[10px] text-black/45">{t('rpt_client_note')}</p>}
             </div>
           </div>
           <div className="text-end text-[10px] leading-relaxed text-black/50">
@@ -208,14 +231,44 @@ export function ReportView() {
           </div>
         </header>
 
-        <div className="grid grid-cols-4 gap-4 border-b border-black/10 py-5 text-center">
-          <Stat label="Comments" value={String(comments.length)} />
-          <Stat label="Resolved" value={String(resolved)} />
-          <Stat label="Open" value={String(comments.length - resolved)} />
-          <Stat label="Versions" value={`${project.currentVersion} · ${project.versions.length}`} />
-        </div>
+        {clientMode ? (
+          <>
+            <div className="grid grid-cols-3 gap-4 border-b border-black/10 py-5 text-center">
+              <Stat label={t('rpt_feedback_list')} value={String(comments.length)} />
+              <Stat label={lang === 'ar' ? 'قيد التنفيذ' : 'In progress'} value={String(comments.length - resolved)} />
+              <Stat label={lang === 'ar' ? 'تم' : 'Done'} value={String(resolved)} />
+            </div>
 
-        {includeApproval && <section className="border-b border-black/10 py-5">
+            {versionRow?.status === 'approved' && (
+              <p className="mt-5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+                ✓ {lang === 'ar' ? `تم اعتماد النسخة ${version} والمشروع جاهز للتسليم.` : `Version ${version} is approved and ready for delivery.`}
+              </p>
+            )}
+
+            <div className="space-y-4 py-6">
+              <p className="text-[10px] font-bold tracking-[0.25em] text-black/40 uppercase">{t('rpt_feedback_list')}</p>
+              {comments.length === 0 && <p className="py-10 text-center text-sm text-black/40">—</p>}
+              {comments.map((c, i) => (
+                <div key={c.id} className="flex items-start gap-3 border-b border-black/10 pb-3">
+                  <span className="font-display w-7 shrink-0 pt-0.5 text-[11px] font-black text-black/30">{String(i + 1).padStart(2, '0')}</span>
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-bold ${c.resolved ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
+                    {fmtTc(c.tc)}
+                  </span>
+                  <p className={`flex-1 text-sm leading-relaxed ${c.resolved ? 'text-black/45 line-through' : ''}`}>{c.text}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-4 gap-4 border-b border-black/10 py-5 text-center">
+              <Stat label="Comments" value={String(comments.length)} />
+              <Stat label="Resolved" value={String(resolved)} />
+              <Stat label="Open" value={String(comments.length - resolved)} />
+              <Stat label="Versions" value={`${project.currentVersion} · ${project.versions.length}`} />
+            </div>
+
+            {includeApproval && <section className="border-b border-black/10 py-5">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] font-bold tracking-[0.25em] text-black/40 uppercase">Approval status</p>
             <span
@@ -280,13 +333,13 @@ export function ReportView() {
                 <div>
                   <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-black/15 bg-black">
                     {includeThumbnails
-                      ? c.thumb
-                        ? <img src={c.thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                      ? c.cleanThumb || c.thumb
+                        ? <img src={c.cleanThumb ?? c.thumb} alt="" className="absolute inset-0 h-full w-full object-cover" />
                         : project.thumbnail
                           ? <img src={project.thumbnail} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
                           : null
                       : null}
-                    {includeDrawings && <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1280 720" preserveAspectRatio="none">
+                    {includeDrawings && Boolean(c.cleanThumb) && <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1280 720" preserveAspectRatio="none">
                       {layers.filter((l) => l.visible).map((l) => (
                         <g key={l.id} opacity={l.opacity ?? 0.95} transform={reportLayerTransform(l)}>
                           {l.type === 'pen' && l.pts && <polyline points={l.pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={l.color} strokeWidth={5} strokeLinecap="round" />}
@@ -347,6 +400,8 @@ export function ReportView() {
             );
           })}
         </div>
+          </>
+        )}
 
         <footer className="flex items-center justify-between border-t-2 border-black/80 pt-4 text-[9px] tracking-widest text-black/40 uppercase">
           <span>{company?.name ?? 'Augmentoria'} — Review Report</span>

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useLang } from '../../../i18n';
-import { actions, clientLogoSrc, useAppState } from '../../../lib/store';
+import { actions, clientInUserScope, clientLogoSrc, useAppState, visibleProjects } from '../../../lib/store';
+import { useAuth } from '../../../context/AuthContext';
 import { FadeIn, LogoChip } from '../../../components/ui/bits';
 import { StatusBadge } from '../DashboardPage';
 import { ClientModal } from './ClientsPage';
@@ -10,11 +11,12 @@ import { ClientModal } from './ClientsPage';
 export default function ClientDetailPage() {
   const { t, lang } = useLang();
   const { id } = useParams();
+  const { user } = useAuth();
   const state = useAppState();
   const client = state.clients.find((c) => c.id === id);
   const [editOpen, setEditOpen] = useState(false);
 
-  if (!client) {
+  if (!client || !clientInUserScope(state, user, client)) {
     return (
       <div className="py-24 text-center">
         <p className="font-display text-4xl font-black text-muted/30">404</p>
@@ -25,7 +27,7 @@ export default function ClientDetailPage() {
     );
   }
 
-  const projects = state.projects.filter((p) => p.clientId === client.id || p.client === client.name);
+  const projects = visibleProjects(state, user).filter((p) => p.clientId === client.id || p.client === client.name);
   const activeProjects = projects.filter((p) => !p.archived);
   const pastProjects = projects.filter((p) => p.archived);
 
@@ -114,7 +116,7 @@ export default function ClientDetailPage() {
         </section>
       )}
 
-      <AnimatePresence>{editOpen && <ClientModal initial={client} onClose={() => setEditOpen(false)} onSave={(data) => { actions.updateClient(client.id, data); setEditOpen(false); }} />}</AnimatePresence>
+      <AnimatePresence>{editOpen && <ClientModal initial={client} onClose={() => setEditOpen(false)} onSave={(data) => { actions.updateClient(client.id, data, user.id); setEditOpen(false); }} />}</AnimatePresence>
     </div>
   );
 }

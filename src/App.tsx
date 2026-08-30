@@ -12,19 +12,22 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import NotFoundPage from './pages/NotFoundPage';
 import { GoldMark } from './components/ui/bits';
 import { RequireAuth } from './components/RequireAuth';
+import Toaster from './components/Toaster';
 
 const ProjectDetailPage = lazy(() => import('./pages/app/ProjectDetailPage'));
 const ClientsPage = lazy(() => import('./pages/app/clients/ClientsPage'));
 const ClientDetailPage = lazy(() => import('./pages/app/clients/ClientDetailPage'));
-const PlaceholderPage = lazy(() => import('./pages/app/PlaceholderPage'));
 const ReviewsPage = lazy(() => import('./pages/review/ReviewsPage'));
 const ReviewWorkspace = lazy(() => import('./pages/review/ReviewWorkspace'));
 const ComparePage = lazy(() => import('./pages/review/ComparePage'));
 const VideoEditorPage = lazy(() => import('./pages/editor/VideoEditorPage'));
 const ProReviewBridge = lazy(() => import('./pages/review/ProReviewBridge'));
 const SettingsPage = lazy(() => import('./pages/app/SettingsPage'));
+const ClientPortalPage = lazy(() => import('./pages/app/ClientPortalPage'));
 const CompaniesPage = lazy(() => import('./pages/app/admin/CompaniesPage'));
+const CompanyDetailPage = lazy(() => import('./pages/app/admin/CompanyDetailPage'));
 const MembersPage = lazy(() => import('./pages/app/admin/MembersPage'));
+const RolesPage = lazy(() => import('./pages/app/admin/RolesPage'));
 const ReportsPage = lazy(() => import('./pages/app/ReportsPage'));
 const ReportView = lazy(() => import('./pages/app/ReportsPage').then((m) => ({ default: m.ReportView })));
 
@@ -36,6 +39,7 @@ function OldReviewRedirect() {
 export default function App() {
   return (
     <ErrorBoundary>
+      <Toaster />
       <Suspense
         fallback={
           <div className="flex min-h-screen items-center justify-center bg-bg">
@@ -47,12 +51,12 @@ export default function App() {
       >
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/review/:pid/:v" element={<ReviewWorkspace mode="guest" />} />
+          <Route path="/review/:pid/:v" element={<ReviewWorkspace mode="guest" experience="pro" />} />
           <Route
             path="/studio/review/:pid/:v"
             element={
               <RequireAuth>
-                <ReviewWorkspace />
+                <ReviewWorkspace experience="pro" />
               </RequireAuth>
             }
           />
@@ -113,24 +117,17 @@ export default function App() {
                   <Route index element={<DashboardPage />} />
                   <Route path="projects" element={<ProjectsPage />} />
                   <Route path="projects/:id" element={<ProjectDetailPage />} />
-                  <Route path="clients" element={<ClientsPage />} />
-                  <Route path="clients/:id" element={<ClientDetailPage />} />
+                  <Route path="my-projects" element={<ClientPortalPage />} />
+                  <Route path="clients" element={<RequirePerm perm="clients.manage"><ClientsPage /></RequirePerm>} />
+                  <Route path="clients/:id" element={<RequirePerm perm="clients.manage"><ClientDetailPage /></RequirePerm>} />
                   <Route path="reviews" element={<ReviewsPage />} />
                   <Route path="reviews/:pid/:v" element={<OldReviewRedirect />} />
-                  <Route path="reports" element={<ReportsPage />} />
+                  <Route path="reports" element={<RequirePerm perm="reports.export"><ReportsPage /></RequirePerm>} />
                   <Route
                     path="reports/:pid/:v"
                     element={
                       <RequirePerm perm="reports.export">
                         <ReportView />
-                      </RequirePerm>
-                    }
-                  />
-                  <Route
-                    path="team"
-                    element={
-                      <RequirePerm perm="team.manage">
-                        <PlaceholderPage titleKey="nav_team" />
                       </RequirePerm>
                     }
                   />
@@ -140,6 +137,22 @@ export default function App() {
                     element={
                       <RequirePerm perm="companies.manage">
                         <CompaniesPage />
+                      </RequirePerm>
+                    }
+                  />
+                  <Route
+                    path="admin/companies/:id"
+                    element={
+                      <RequirePerm perm="companies.manage">
+                        <CompanyDetailPage />
+                      </RequirePerm>
+                    }
+                  />
+                  <Route
+                    path="admin/roles"
+                    element={
+                      <RequirePerm perm="roles.assign">
+                        <RolesPage />
                       </RequirePerm>
                     }
                   />

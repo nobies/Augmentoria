@@ -24,8 +24,13 @@ export default function AuthPage({ mode }: Props) {
   const destination = typeof requestedPath === 'string' && requestedPath.startsWith('/') ? requestedPath : '/app';
 
   const go = (id: string) => {
-    loginAs(id);
+    const ok = loginAs(id);
     setLoading(true);
+    if (!ok) {
+      setAuthError(t('auth_account_disabled'));
+      setLoading(false);
+      return;
+    }
     navigate(destination, { replace: true });
   };
 

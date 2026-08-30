@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
 import { useLang } from '../../i18n';
-import { useAppState, STATUS_LABEL, STATUS_CLASS } from '../../lib/store';
+import { useAppState, STATUS_LABEL, STATUS_CLASS, visibleProjects } from '../../lib/store';
+import { useAuth } from '../../context/AuthContext';
 import { FadeIn, LogoChip } from '../../components/ui/bits';
 
 export default function ReviewsPage() {
   const { t, lang } = useLang();
+  const { user } = useAuth();
   const state = useAppState();
 
   return (
@@ -15,7 +17,7 @@ export default function ReviewsPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {state.projects
+        {visibleProjects(state, user)
           .filter((p) => !p.archived && p.versions.length > 0)
           .map((p, i) => {
             const clientRec = state.clients.find((c) => c.id === p.clientId || c.name === p.client);

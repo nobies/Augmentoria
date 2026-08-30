@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
-import { useAppState } from '../../lib/store';
+import { useAppState, projectInUserScope } from '../../lib/store';
+import { useAuth } from '../../context/AuthContext';
 import { mediaStorage } from '../../lib/mediaStorage';
 import { useProjectAssets } from '../../lib/assets';
 import { GoldMark } from '../../components/ui/bits';
@@ -13,8 +14,10 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
   const { t, lang } = useLang();
   const { pid, vA: vAParam, vB: vBParam, assetA, assetB } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const state = useAppState();
   const project = state.projects.find((p) => p.id === pid);
+  const activeSession = state.sessions.find((session) => session.projectId === pid && !session.endedAt);
   const { assets, loading: assetsLoading } = useProjectAssets(pid);
   const videoAssets = assets.filter((asset) => asset.isVideo);
 
@@ -31,6 +34,7 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
   const refA = useRef<HTMLVideoElement>(null);
   const refB = useRef<HTMLVideoElement>(null);
   const wiping = useRef(false);
+  const timelineDragging = useRef(false);
 
   const versionSrcA = useVersionVideo(pid, source === 'versions' ? vA : undefined);
   const versionSrcB = useVersionVideo(pid, source === 'versions' ? vB : undefined);
@@ -98,6 +102,12 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
     setTime(t);
   };
 
+  const scrubTimeline = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    seekAll(ratio * dur);
+  };
+
   const startWipe = (e: React.PointerEvent) => {
     wiping.current = true;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -115,7 +125,8 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
   };
 
   const validSelection = source === 'assets' ? videoAssets.some((asset) => asset.id === vA) && videoAssets.some((asset) => asset.id === vB) : versions.includes(vA) && versions.includes(vB);
-  if (!project || (source === 'assets' && assetsLoading)) {
+  if (!project || !projectInUserScope(state, user, project)) return <NotFoundPage />;
+  if (source === 'assets' && assetsLoading) {
     return <div className="flex h-screen items-center justify-center bg-bg text-sm text-muted">Loading media…</div>;
   }
   if (!validSelection) {
@@ -129,7 +140,8 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
       <header className="flex h-14 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line px-4 lg:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <button
-            onClick={() => navigate(`/app/projects/${project.id}`)}
+            onClick={() => navigate(activeSession ? `/studio/review/${project.id}/${activeSession.version}` : `/app/projects/${project.id}`)}
+            aria-label={activeSession ? (lang === 'ar' ? 'العودة للجلسة' : 'Back to live session') : (lang === 'ar' ? 'العودة للمشروع' : 'Back to project')}
             className="rounded-full border border-line p-2 text-muted transition-colors hover:border-accent hover:text-accent"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rtl:rotate-180">
@@ -144,15 +156,22 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select value={vA} onChange={(e) => setVA(e.target.value)} className={sel} style={{ color: '#4FD1C5' }}>
+          <button
+            type="button"
+            onClick={() => navigate(activeSession ? `/studio/review/${project.id}/${activeSession.version}` : `/studio/review/${project.id}/${source === 'versions' ? vB : project.currentVersion}`)}
+            className="rounded-full border border-emerald-400/40 px-3.5 py-1.5 text-[11px] font-bold text-emerald-300 transition-colors hover:bg-emerald-400/10"
+          >
+            {activeSession ? `● ${lang === 'ar' ? 'العودة للجلسة' : 'Back to session'}` : `▶ ${lang === 'ar' ? 'فتح الريفيو' : 'Open review'}`}
+          </button>
+          <select aria-label={lang === 'ar' ? 'الفيديو الأول للمقارنة' : 'Comparison video A'} value={vA} onChange={(e) => setVA(e.target.value)} className={sel} style={{ color: '#4FD1C5' }}>
             {(source === 'assets' ? videoAssets.map((asset) => ({ id: asset.id, label: asset.name })) : versions.map((version) => ({ id: version, label: version }))).map((option) => (
               <option key={option.id} value={option.id}>
                 A · {option.label}
               </option>
             ))}
           </select>
-          <span className="text-xs text-muted/50">vs</span>
-          <select value={vB} onChange={(e) => setVB(e.target.value)} className={sel} style={{ color: '#FB7185' }}>
+          <span className="text-xs text-muted/50">{lang === 'ar' ? 'مقابل' : 'vs'}</span>
+          <select aria-label={lang === 'ar' ? 'الفيديو الثاني للمقارنة' : 'Comparison video B'} value={vB} onChange={(e) => setVB(e.target.value)} className={sel} style={{ color: '#FB7185' }}>
             {(source === 'assets' ? videoAssets.map((asset) => ({ id: asset.id, label: asset.name })) : versions.map((version) => ({ id: version, label: version }))).map((option) => (
               <option key={option.id} value={option.id}>
                 B · {option.label}
@@ -226,6 +245,7 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
         <div className="mt-3 flex items-center gap-3">
           <button
             onClick={toggle}
+            aria-label={playing ? (lang === 'ar' ? 'إيقاف مؤقت' : 'Pause comparison') : (lang === 'ar' ? 'تشغيل المقارنة' : 'Play comparison')}
             className="flex h-10 w-10 items-center justify-center rounded-full border border-accent/40 bg-surface text-accent transition-colors hover:bg-accent/10"
           >
             {playing ? (
@@ -240,11 +260,25 @@ export default function ComparePage({ source = 'versions' }: { source?: 'version
             )}
           </button>
           <div
-            className="group relative h-2.5 flex-1 cursor-pointer rounded-full bg-line"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              seekAll(((e.clientX - r.left) / r.width) * dur);
+            role="slider"
+            aria-label={lang === 'ar' ? 'الخط الزمني للمقارنة' : 'Compare timeline'}
+            aria-valuemin={0}
+            aria-valuemax={dur}
+            aria-valuenow={time}
+            tabIndex={0}
+            className="group relative h-3 flex-1 cursor-ew-resize touch-none rounded-full bg-line outline-none focus:ring-2 focus:ring-accent/60"
+            onPointerDown={(event) => {
+              timelineDragging.current = true;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              scrubTimeline(event);
             }}
+            onPointerMove={(event) => { if (timelineDragging.current) scrubTimeline(event); }}
+            onPointerUp={(event) => {
+              scrubTimeline(event);
+              timelineDragging.current = false;
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            onPointerCancel={() => { timelineDragging.current = false; }}
           >
             <div className="pointer-events-none absolute inset-y-0 start-0 rounded-full bg-accent" style={{ width: dur ? `${(time / dur) * 100}%` : '0%' }} />
           </div>

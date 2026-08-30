@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "node scripts/dev-local.mjs",
+    "dev:e2e": "node scripts/e2e-server.mjs",
+    "realtime:dev": "node scripts/realtime-server.mjs",
     "build": "tsc && vite build",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:realtime": "node scripts/realtime-smoke.mjs",
     "check": "npm run lint && npm run test && npm run build",
     "check:all": "npm run check && npm run test:e2e",
     "preview": "vite preview",
@@ -22,10 +26,13 @@
     "review:engine:down": "docker compose -f services/freeframe/docker-compose.dev.yml -f config/freeframe.compose.yml down"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.112.4",
     "framer-motion": "^12.23.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.18.2"
+    "react-router-dom": "^7.18.2",
+    "write-excel-file": "^4.1.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

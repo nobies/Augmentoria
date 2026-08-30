@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLang } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
-import { actions, clientLogoSrc, useAppState } from '../../lib/store';
+import { clientLogoSrc, useAppState, visibleClients, visibleProjects } from '../../lib/store';
 import { STATUS_LABEL } from '../../lib/store';
 import { LogoChip } from '../../components/ui/bits';
 import { StatusBadge } from './DashboardPage';
+import ProjectsCalendar from './ProjectsCalendar';
+import NewProjectModal from '../../components/NewProjectModal';
 
 type Filter = 'all' | 'editing' | 'review' | 'changes' | 'approved';
 
@@ -19,11 +21,16 @@ export default function ProjectsPage() {
   const [clientFilter, setClientFilter] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [query, setQuery] = useState('');
+  const clients = visibleClients(state, user);
 
   const filters: Filter[] = ['all', 'editing', 'review', 'changes', 'approved'];
-  let list = filter === 'all' ? state.projects : state.projects.filter((p) => p.status === filter);
+  let list = filter === 'all' ? visibleProjects(state, user) : visibleProjects(state, user).filter((p) => p.status === filter);
   list = list.filter((p) => (showArchived ? p.archived : !p.archived));
   if (clientFilter !== 'all') list = list.filter((p) => p.clientId === clientFilter || p.client === clientFilter);
+  const normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery) list = list.filter((p) => `${p.name} ${p.client}`.toLowerCase().includes(normalizedQuery));
 
   return (
     <div className="space-y-6">
@@ -57,6 +64,20 @@ export default function ProjectsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <div className="flex overflow-hidden rounded-full border border-line">
+          {(['list', 'calendar'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-4 py-1.5 text-xs font-semibold transition-colors ${
+                view === v ? 'bg-accent/10 text-accent' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {v === 'list' ? t('prj_view_list') : `📅 ${t('prj_view_calendar')}`}
+            </button>
+          ))}
+        </div>
+
         {filters.map((f) => (
           <button
             key={f}
@@ -72,13 +93,22 @@ export default function ProjectsPage() {
           </button>
         ))}
 
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={lang === 'ar' ? 'ابحث في المشاريع…' : 'Search projects…'}
+          aria-label={lang === 'ar' ? 'بحث في المشاريع' : 'Search projects'}
+          className="min-w-[180px] rounded-full border border-line bg-surface px-4 py-1.5 text-xs outline-none focus:border-accent"
+        />
+
         <select
           value={clientFilter}
           onChange={(e) => setClientFilter(e.target.value)}
+          aria-label={t('prj_filter_client')}
           className="ms-auto rounded-full border border-line bg-surface px-4 py-1.5 text-xs text-muted outline-none focus:border-accent"
         >
           <option value="all">{t('prj_filter_client')}</option>
-          {state.clients.map((c) => (
+          {clients.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
@@ -86,20 +116,29 @@ export default function ProjectsPage() {
         </select>
       </div>
 
+      {view === 'calendar' && <ProjectsCalendar projects={list.filter((p) => !p.archived)} />}
+
+      {view === 'list' && (
       <div className="overflow-hidden rounded-xl border border-line bg-bg">
         <table className="w-full text-sm">
           <thead className="bg-surface text-[11px] tracking-wider text-muted uppercase">
             <tr>
-              <th className="px-5 py-3.5 text-start font-medium">Project</th>
-              <th className="hidden px-5 py-3.5 text-start font-medium md:table-cell">Client</th>
-              <th className="px-5 py-3.5 text-start font-medium">Status</th>
+              <th className="px-5 py-3.5 text-start font-medium">{lang === 'ar' ? 'المشروع' : 'Project'}</th>
+              <th className="hidden px-5 py-3.5 text-start font-medium md:table-cell">{lang === 'ar' ? 'العميل' : 'Client'}</th>
+              <th className="px-5 py-3.5 text-start font-medium">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
               <th className="hidden px-5 py-3.5 text-start font-medium sm:table-cell">{t('prj_versions')}</th>
               <th className="hidden px-5 py-3.5 text-start font-medium lg:table-cell">{t('prj_due')}</th>
               <th className="hidden px-5 py-3.5 text-end font-medium xl:table-cell"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {list.map((p, i) => {
+            {list.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-14 text-center text-sm text-muted">
+                  {lang === 'ar' ? 'لا توجد مشاريع مطابقة للفلاتر الحالية.' : 'No projects match the current filters.'}
+                </td>
+              </tr>
+            ) : list.map((p, i) => {
               const clientRec = state.clients.find((c) => c.id === p.clientId || c.name === p.client);
               return (
                 <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }} className={`group transition-colors hover:bg-surface ${p.archived ? 'opacity-60' : ''}`}>
@@ -143,7 +182,7 @@ export default function ProjectsPage() {
                       to={`/app/projects/${p.id}`}
                       className="inline-flex translate-x-1 items-center gap-1 rounded-full border border-line px-3.5 py-1.5 text-xs text-muted opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100 hover:border-accent hover:text-accent rtl:-translate-x-1 rtl:group-hover:translate-x-0"
                     >
-                      Open
+                      {lang === 'ar' ? 'فتح' : 'Open'}
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="rtl:rotate-180">
                         <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
@@ -155,66 +194,9 @@ export default function ProjectsPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       <AnimatePresence>{newOpen && <NewProjectModal onClose={() => setNewOpen(false)} creatorId={user.id} onCreated={(id) => navigate(`/app/projects/${id}`)} />}</AnimatePresence>
     </div>
-  );
-}
-
-function NewProjectModal({
-  onClose,
-  creatorId,
-  onCreated
-}: {
-  onClose: () => void;
-  creatorId: string;
-  onCreated: (id: string) => void;
-}) {
-  const { t } = useLang();
-  const state = useAppState();
-  const [name, setName] = useState('');
-  const [clientId, setClientId] = useState(state.clients[0]?.id ?? '');
-  const [due, setDue] = useState('');
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const rec = state.clients.find((c) => c.id === clientId);
-    if (!name.trim() || !rec) return;
-    const p = actions.addProject({ name: name.trim(), client: rec.name, due: due || '—', creatorId, clientId: rec.id });
-    onClose();
-    onCreated(p.id);
-  };
-
-  const cls = 'w-full rounded-lg border border-line bg-bg px-4 py-2.5 text-sm outline-none transition-colors focus:border-accent';
-
-  return (
-    <>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[65] bg-black/60 backdrop-blur-sm" />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="fixed top-1/2 left-1/2 z-[70] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-surface p-7 shadow-2xl"
-      >
-        <h2 className="font-display mb-5 text-lg font-bold">+ {t('dash_new_project')}</h2>
-        <form onSubmit={submit} className="space-y-4">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('m_name')} className={cls} />
-          <select value={clientId} onChange={(e) => setClientId(e.target.value)} className={cls}>
-            {state.clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <Link to="/app/clients" className="block text-[11px] text-accent hover:underline">
-            + {t('client_add')}
-          </Link>
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} dir="ltr" className={cls} />
-          <button type="submit" className="w-full rounded-full bg-accent py-3 text-sm font-bold text-bg transition-colors hover:bg-accent-dim">
-            {t('set_save')}
-          </button>
-        </form>
-      </motion.div>
-    </>
   );
 }

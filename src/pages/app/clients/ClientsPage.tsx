@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLang } from '../../../i18n';
-import { actions, clientLogoSrc, findClientByName, useAppState } from '../../../lib/store';
+import { actions, clientLogoSrc, findClientByName, useAppState, visibleClients } from '../../../lib/store';
 import type { Client } from '../../../lib/store';
 import { FadeIn, LogoChip } from '../../../components/ui/bits';
 import { guessLogoDomain } from '../../../lib/clients';
+import { useAuth } from '../../../context/AuthContext';
 
 const empty: Omit<Client, 'id' | 'createdAt'> = {
   name: '',
@@ -20,6 +21,10 @@ const empty: Omit<Client, 'id' | 'createdAt'> = {
 export default function ClientsPage() {
   const { t, lang } = useLang();
   const state = useAppState();
+  const { user } = useAuth();
+  const myMember = state.members.find((m) => m.id === user.id);
+  const scopedCompanyId = user.roleId === 'super_admin' ? '' : myMember?.companyId ?? '';
+  const list = visibleClients(state, user);
   const [editing, setEditing] = useState<Client | 'new' | null>(null);
 
   return (
@@ -28,7 +33,8 @@ export default function ClientsPage() {
         <div>
           <h1 className="font-display text-2xl font-black">{t('clients_title')}</h1>
           <p className="mt-1.5 text-xs text-muted">
-            {state.clients.length} {lang === 'ar' ? 'عميل' : 'clients'}
+            {list.length} {lang === 'ar' ? 'عميل' : 'clients'}
+            {scopedCompanyId && ` · ${state.companies.find((c) => c.id === scopedCompanyId)?.name ?? ''}`}
           </p>
         </div>
         <motion.button
@@ -42,7 +48,7 @@ export default function ClientsPage() {
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {state.clients.map((c, i) => {
+        {list.map((c, i) => {
           const projects = state.projects.filter((p) => p.clientId === c.id || p.client === c.name);
           return (
             <FadeIn key={c.id} delay={i * 0.05}>
@@ -83,8 +89,8 @@ export default function ClientsPage() {
             initial={editing === 'new' ? null : editing}
             onClose={() => setEditing(null)}
             onSave={(data) => {
-              if (editing === 'new') actions.addClient(data);
-              else if (editing !== null) actions.updateClient(editing.id, data);
+              if (editing === 'new') actions.addClient({ ...data, companyId: scopedCompanyId || myMember?.companyId }, user.id);
+              else if (editing !== null) actions.updateClient(editing.id, data, user.id);
               setEditing(null);
             }}
           />

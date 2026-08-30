@@ -18,6 +18,7 @@ export interface MediaStorageProvider {
   getVersionVideo(projectId: string, version: string): Promise<VersionVideoRecord | undefined>;
   saveVersionVideo(projectId: string, version: string, file: File): Promise<void>;
   assignAssetToVersion(projectId: string, version: string, assetId: string): Promise<VersionVideoRecord>;
+  deleteProjectMedia(projectId: string): Promise<void>;
 }
 
 class IndexedDbMediaStorage implements MediaStorageProvider {
@@ -68,6 +69,17 @@ class IndexedDbMediaStorage implements MediaStorageProvider {
     };
     await idb.put('video', record);
     return record;
+  }
+
+  async deleteProjectMedia(projectId: string) {
+    const [assets, videos] = await Promise.all([
+      idb.all<AssetRecord>('assets'),
+      idb.all<VersionVideoRecord>('video')
+    ]);
+    await Promise.all([
+      ...assets.filter((asset) => asset.projectId === projectId).map((asset) => idb.del('assets', asset.id)),
+      ...videos.filter((video) => video.id.startsWith(`${projectId}__`)).map((video) => idb.del('video', video.id))
+    ]);
   }
 }
 

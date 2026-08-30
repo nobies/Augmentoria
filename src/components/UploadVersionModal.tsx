@@ -5,6 +5,7 @@ import { useLang } from '../i18n';
 import { actions } from '../lib/store';
 import { idb } from '../lib/idb';
 import { useEscape } from '../lib/useEscape';
+import { useAuth } from '../context/AuthContext';
 
 interface Props {
   projectId: string;
@@ -15,6 +16,7 @@ interface Props {
 
 export default function UploadVersionModal({ projectId, prevVersion, openNotes, onClose }: Props) {
   const { t, lang } = useLang();
+  const { user } = useAuth();
   const navigate = useNavigate();
   useEscape(onClose);
   const [file, setFile] = useState<File | null>(null);
@@ -33,7 +35,7 @@ export default function UploadVersionModal({ projectId, prevVersion, openNotes, 
     }
     setBusy(true);
     try {
-      const res = actions.addVersion(projectId, { carryOpen: carry && openNotes > 0 });
+      const res = actions.addVersion(projectId, { carryOpen: carry && openNotes > 0 }, user.id);
       if (!res?.version) throw new Error('version creation failed');
       await idb.put('video', {
         id: `${projectId}__${res.version}`,

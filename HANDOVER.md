@@ -1,7 +1,7 @@
 # Augmentoria — Project Handover
 
-**آخر تحديث:** 30 أغسطس 2026  
-**حالة المنتج:** Local functional prototype — الوظائف المحلية وعزل الشركات مجرّبة؛ Online/Production ما زال مرحلة لاحقة  
+**آخر تحديث:** 31 أغسطس 2026
+**حالة المنتج:** Cloud preview منشورة — الواجهة وSupabase Realtime وDatabase foundation متاحة أونلاين؛ Auth وDurable app data وGoogle Drive ما زالت مراحل لاحقة
 **الفرع الحالي وقت إعداد الملف:** `codex/freeframe-review-integration`
 
 > هذا الملف هو المرجع التنفيذي لحالة المشروع الحالية. الرؤية الأصلية موجودة خارج المشروع في `C:\tmp\plan.txt`، أما هذا الملف فيفصل بين ما هو مطلوب نظريًا وما تم تنفيذه فعليًا في الكود.
@@ -46,7 +46,7 @@ Assets → Edit → Version → Review → Comments → Revision → Approval �
 1. **Review واحدة موحدة:** لا يوجد نظاما Review منفصلان للمستخدم.
 2. **حساب وإعدادات موحدة:** Admin المشروع هو نفسه Admin الـReview، ولا توجد شاشة Login أو Settings ثانية خاصة بمحرك خارجي.
 3. **الحفاظ على فكرة المنتج الأساسية:** أي Engine خارجي يركب خلف Adapter ولا يتحكم في هوية المنتج أو الـProjects أو الصلاحيات.
-4. **التنفيذ المحلي أولًا:** تم تنفيذ واختبار الوظائف المحلية، أما Backend وGoogle Drive والنشر الأونلاين فمرحلة تالية مستقلة.
+4. **التنفيذ المحلي أولًا ثم Cloud preview:** اكتملت واختبرت الوظائف المحلية، وبدأت مرحلة الأونلاين بنشر Preview وربط Supabase. Google Drive والنقل الكامل للبيانات ما زالا مرحلتين مستقلتين.
 5. **Storage abstraction:** واجهة `MediaStorageProvider` تفصل المنتج عن IndexedDB حاليًا، وتسمح بإضافة Google Drive أو S3 لاحقًا.
 6. **لا Transcoding إجباري:** الملفات القابلة للتشغيل في المتصفح لا يلزم تحويلها. الـProxy/FFmpeg يستخدم فقط للصيغ الثقيلة أو غير المدعومة أو لتسريع التوزيع.
 7. **FreeFrame معزول:** موجود تحت `services/freeframe` للتقييم فقط. تشغيل Augmentoria المحلي واختباراته لا يحتاجان Docker أو FreeFrame.
@@ -72,12 +72,23 @@ Assets → Edit → Version → Review → Comments → Revision → Approval �
 - ملفات الـAssets والفيديو المعين لكل Version وComment thumbnails: IndexedDB عبر `src/lib/idb.ts` و`src/lib/mediaStorage.ts`.
 - Timeline الخاصة بالمحرر: `localStorage` لكل Project/Version.
 
-### التزامن المحلي
+### التزامن
 
 - WebSocket development server في `scripts/realtime-server.mjs`.
 - المنفذ الافتراضي: `8787`.
 - `BroadcastChannel` للتزامن بين Tabs المحلية.
-- الحالة داخل Memory فقط وتختفي عند إيقاف السيرفر.
+- Supabase Realtime Broadcast/Presence يستخدم تلقائيًا في النسخة المنشورة.
+- الرسائل اللحظية تعمل أونلاين، لكن الحالة الدائمة للتعليقات والجلسات ما زالت تعتمد على المتصفح حتى استكمال Database adapter.
+
+### Cloud foundation
+
+- GitHub: الفرع `codex/freeframe-review-integration` في `nobies/Augmentoria`.
+- Vercel: Preview تلقائية من الفرع، مع إعداد Vite SPA وdeep-link rewrites في `vercel.json`.
+- Supabase: مشروع `augmentoria` في `eu-west-1`، مع 22 جدولًا للـmulti-tenant domain وكل الجداول العامة عليها RLS.
+- دوال RLS الحساسة نُقلت إلى schema خاصة وغير معروضة كـRPC للزائر.
+- جداول الـlegacy محفوظة للرجوع فقط ومغلقة أمام `anon` و`authenticated`.
+- أضيفت سياسات `project_memberships` وفهارس المفاتيح الأجنبية للجداول النشطة.
+- ملفات migrations موجودة تحت `supabase/migrations/`.
 
 ### الاختبارات
 
@@ -97,7 +108,10 @@ Assets → Edit → Version → Review → Comments → Revision → Approval �
 | `src/context/AuthContext.tsx` | جلسة الدخول المحلية وحساب الصلاحيات |
 | `src/lib/mediaStorage.ts` | Storage provider وIndexedDB implementation |
 | `src/lib/assets.ts` | تحميل وعرض وإدارة Assets المشروع |
-| `src/lib/realtime.ts` | WebSocket/BroadcastChannel client |
+| `src/lib/realtime.ts` | Supabase Realtime/WebSocket/BroadcastChannel client |
+| `src/lib/supabase.ts` | Supabase browser client باستخدام publishable key فقط |
+| `supabase/migrations/` | RLS hardening وسياسات العضويات والفهارس |
+| `vercel.json` | Vite build وSPA routing على Vercel |
 | `src/pages/review/ReviewWorkspace.tsx` | شاشة الـReview الموحدة |
 | `src/pages/review/Player.tsx` | Video player والـInteractive timeline |
 | `src/pages/review/OverlayLayer.tsx` | الرسم والصور والنص وFree Transform |
@@ -222,7 +236,7 @@ Assets → Edit → Version → Review → Comments → Revision → Approval �
 
 **قيد حالي:** Free Transform المباشر لا يطبق على مسار Pen نفسه؛ يمكن إظهاره أو إخفاؤه أو حذفه، لكن تعديل نقاطه بعد الرسم يحتاج مرحلة لاحقة.
 
-### 6.6 Live Review Sessions — مكتملة محليًا
+### 6.6 Live Review Sessions — مكتملة محليًا وRealtime transport متاح أونلاين
 
 - Start Live Session وEnd Session.
 - Presence وعدد المشاركين.
@@ -335,17 +349,17 @@ FFmpeg ليس جزءًا إجباريًا من المسار المحلي الح�
 
 هذه هي الأولوية التالية قبل اعتبار المنتج جاهزًا للعمل الحقيقي:
 
-- [ ] اختيار Backend وDatabase production architecture.
+- [x] اختيار Backend وDatabase architecture: Supabase Postgres/Auth/Realtime.
 - [ ] نقل Companies/Users/Clients/Projects/Versions/Comments/Sessions/Approvals من `localStorage` إلى Database.
 - [ ] Authentication حقيقي: email/password أو SSO، reset password، sessions، invitations.
-- [ ] Server-side RBAC وTenant isolation/RLS.
+- [x] إنشاء multi-tenant schema وRLS foundation؛ ما زال ربط كل Frontend actions بالـDatabase مطلوبًا.
 - [ ] Share links آمنة بـtokens وexpiry وrevocation وoptional password.
 - [ ] API ثابتة وIDs دائمة بدل IDs المحلية.
-- [ ] Realtime service مؤمّنة ومستمرة وقابلة للتوسع.
+- [x] ربط Supabase Realtime Broadcast/Presence للنسخة المنشورة؛ durable event persistence ما زال مطلوبًا.
 - [ ] حفظ الأحداث والتعليقات والـPresence/session state في Database.
 - [ ] Rate limiting، validation، audit logs، monitoring، backups.
-- [ ] فصل Environment variables وSecrets وإدارة Production configuration.
-- [ ] CI/CD وStaging وProduction deployment.
+- [x] استخدام Supabase publishable key فقط داخل المتصفح وعدم رفع `.env` أو secrets.
+- [x] GitHub branch وVercel Preview CI/CD؛ الدمج إلى `main` وتحويل Production مؤجلان إلى ما بعد القبول.
 
 ### P0 — Google Drive Storage
 
@@ -415,7 +429,7 @@ FFmpeg ليس جزءًا إجباريًا من المسار المحلي الح�
 |---|---|
 | البيانات الأساسية في `localStorage` | البيانات مرتبطة بالمتصفح ولا تصلح لفريق Production |
 | ملفات Assets في IndexedDB | لا تتشارك بين الأجهزة ولا تصلح كمخزن مركزي |
-| Realtime server داخل الذاكرة | Restart يفقد Rooms والحالة غير المحفوظة |
+| Supabase Broadcast غير دائم | التزامن اللحظي يعمل أونلاين، لكن Restart/عدم وجود مشارك لا يحفظ State ما لم يمر عبر Database adapter |
 | Auth محلية Demo | لا توجد حماية حقيقية أو Password lifecycle |
 | RBAC محلي داخل الواجهة وDomain actions | يجب فرض الصلاحيات مرة أخرى على API/Database/RLS |
 | Public review بدون production token model | الرابط الحالي Demo وليس Share security نهائية |
@@ -481,7 +495,7 @@ npm run realtime:dev
 
 ## 11. الاختبارات وحالة الجودة
 
-آخر نتيجة مؤكدة — 30 أغسطس 2026:
+آخر نتيجة محلية مؤكدة — 31 أغسطس 2026:
 
 - ESLint: ناجح بدون Warnings.
 - TypeScript: ناجح.
@@ -528,17 +542,15 @@ npm run check:all
 
 ---
 
-## 12. حالة Git وقت التسليم
+## 12. حالة Git والنشر السحابي وقت التسليم
 
-وقت إنشاء هذا الملف توجد تغييرات كثيرة في Working Tree لم يتم توثيقها كلها في Commit نهائي بعد، وتشمل تطوير الـReview والـEditor والـReports والـRealtime والاختبارات.
-
-قبل بدء مرحلة Online يُنصح بـ:
-
-1. مراجعة `git diff` والتأكد من عدم وجود ملفات أو أسرار غير مقصودة.
-2. تشغيل كل الاختبارات مرة أخيرة.
-3. عمل Commit واضح للـLocal milestone الحالي.
-4. إنشاء Branch منفصل للـBackend/Google Drive حتى لا تختلط تغييرات Production بالنسخة المحلية المستقرة.
-5. عدم تشغيل أو تعديل FreeFrame submodule إلا ضمن مهمة Integration محددة.
+- تم فحص الملفات بحثًا عن secrets؛ ملف `.env` مستبعد من Git، والواجهة تستخدم Supabase publishable key فقط.
+- تم توثيق Local milestone وCloud preview على `codex/freeframe-review-integration` ورفعه إلى GitHub.
+- تاريخ الفرع المحلي و`main` الموجود على GitHub غير مرتبطين؛ لذلك لم يتم force-push أو استبدال `main`.
+- Vercel Preview تبنى تلقائيًا من الفرع ويستخدم alias ثابتًا خاصًا به.
+- Production الحالية المرتبطة بـ`main` لم تتغير.
+- Supabase migrations طبقت بنجاح، وأصبح Security Advisor بلا تحذيرات schema/RLS؛ بقي إعداد Dashboard واحد لتفعيل leaked-password protection.
+- لا يجب دمج الفرع في `main` قبل مراجعة الفرق المعماري واختيار طريقة دمج التاريخين بأمان.
 
 ---
 

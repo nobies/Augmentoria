@@ -16,6 +16,7 @@ import { toast } from '../../lib/toast';
 import NotFoundPage from '../NotFoundPage';
 import { renderCommentThumbnail, saveCommentThumbnail } from '../../lib/commentThumbnail';
 import { connectReviewRealtime } from '../../lib/realtime';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 const COLORS = ['#FF4D4D', '#FFB020', '#4FD1C5', '#A78BFA', '#FB7185', '#34D399', '#FFFFFF'];
 const DRAFT = '__draft';
@@ -491,14 +492,18 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
           </svg>
         </Link>
       )}
-      {/* Guest info banner: shown when viewing from another browser where live data isn't available */}
+      {/* Guest info banner: media upload remains browser-local until cloud storage is connected. */}
       {guest && usingDemo && (
         <div className="hidden md:flex shrink-0 bg-amber-400/15 border-b border-amber-400/30 px-4 py-2 text-[11px] text-amber-300 items-center gap-2">
           <span>ℹ️</span>
           <span>
             {lang === 'ar'
-              ? 'أنت تشاهد نسخة تجريبية — الفيديو المرفوع والتعليقات الحية متاحة فقط داخل نفس المتصفح.'
-              : 'You\'re viewing a demo — uploaded video and live comments are only visible within the same browser session.'}
+              ? isSupabaseConfigured
+                ? 'أنت تشاهد فيديو تجريبيًا — التعليقات متزامنة لحظيًا، بينما الفيديو المرفوع يظل على هذا المتصفح حتى ربط التخزين السحابي.'
+                : 'أنت تشاهد نسخة تجريبية — الفيديو المرفوع والتعليقات الحية متاحة فقط داخل نفس المتصفح.'
+              : isSupabaseConfigured
+                ? 'You\'re viewing a demo video — comments sync live, while uploaded media stays in this browser until cloud storage is connected.'
+                : 'You\'re viewing a demo — uploaded video and live comments are only visible within the same browser session.'}
           </span>
         </div>
       )}
@@ -545,7 +550,7 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
         </div>
 
         <div className="flex items-center gap-2">
-          {activeSession && (
+          {(activeSession || isSupabaseConfigured) && (
             <span
               title={realtimeConnected ? `${liveParticipants.length} connected participant(s)` : realtimeDetail}
               className={`hidden rounded-full border px-2.5 py-1 text-[10px] font-bold sm:inline-flex ${

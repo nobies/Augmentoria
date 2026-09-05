@@ -498,6 +498,7 @@ test.describe('Live Sessions & Real-Time', () => {
     // Client seeks to 5s, host should sync
     const hostVideo = page.locator('video');
     const clientVideo = client.locator('video');
+    await client.bringToFront();
     await expect.poll(() => hostVideo.evaluate((el) => (el as HTMLVideoElement).duration || 0)).toBeGreaterThan(0);
     await expect.poll(() => clientVideo.evaluate((el) => (el as HTMLVideoElement).duration || 0)).toBeGreaterThan(0);
     await clientVideo.evaluate((el) => { (el as HTMLVideoElement).currentTime = 5; });

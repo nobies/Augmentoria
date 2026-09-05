@@ -214,10 +214,11 @@ export default function VideoEditorPage() {
   const splitClip = () => {
     if (!selectedClip) return;
     const end = selectedClip.out || videoRef.current?.duration || 0;
-    if (playhead <= selectedClip.in + 0.05 || playhead >= end - 0.05) return;
+    const splitTime = videoRef.current?.currentTime ?? playhead;
+    if (splitTime <= selectedClip.in + 0.05 || splitTime >= end - 0.05) return;
     const splitId = nextClipId();
-    const left = { ...selectedClip, id: `${splitId}-a`, out: playhead, name: `${selectedClip.name} · A` };
-    const right = { ...selectedClip, id: `${splitId}-b`, in: playhead, out: end, name: `${selectedClip.name} · B` };
+    const left = { ...selectedClip, id: `${splitId}-a`, out: splitTime, name: `${selectedClip.name} · A` };
+    const right = { ...selectedClip, id: `${splitId}-b`, in: splitTime, out: end, name: `${selectedClip.name} · B` };
     commitTimeline({ ...timeline, clips: timeline.clips.flatMap((clip) => (clip.id === selectedClip.id ? [left, right] : [clip])) });
     setSelectedClipId(right.id);
   };

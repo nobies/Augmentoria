@@ -16,6 +16,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   timeout: 45_000,
+  // Hosted navigation and media metadata can exceed local-server timings.
+  expect: { timeout: 20_000 },
   outputDir: 'test-results-online',
   reporter: [['list'], ['json', { outputFile: '.test-shots/online-results.json' }]],
   use: {

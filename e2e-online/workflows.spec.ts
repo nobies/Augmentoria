@@ -31,7 +31,7 @@ test('editor volume and playback speed preserve the current playhead', async ({ 
   await expect.poll(() => video.evaluate((media: HTMLVideoElement) => media.currentTime)).toBeGreaterThan(9.9);
   await page.getByLabel('Mute clip').check();
   await expect.poll(() => video.evaluate((media: HTMLVideoElement) => media.currentTime)).toBeGreaterThan(9.9);
-  await page.getByLabel('Speed', { exact: true }).selectOption('1.5');
+  await page.getByRole('combobox', { name: 'Speed', exact: true }).selectOption('1.5');
   await expect.poll(() => video.evaluate((media: HTMLVideoElement) => media.currentTime)).toBeGreaterThan(9.9);
   await page.getByRole('button', { name: /Split at playhead/ }).click();
   await expect(page.getByRole('heading', { name: /Timeline · 2 clips/ })).toBeVisible();

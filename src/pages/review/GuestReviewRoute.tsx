@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useLang } from '../../i18n';
 import { validateReviewShare } from '../../lib/reviewShare';
@@ -6,49 +6,53 @@ import ReviewWorkspace from './ReviewWorkspace';
 
 type GateStatus = 'locked' | 'checking' | 'granted' | 'denied' | 'error';
 
-function sessionGrantKey(token: string, projectKey: string, versionKey: string) {
-  return `augmentoria-review-grant:${projectKey}:${versionKey}:${token}`;
-}
-
 export default function GuestReviewRoute() {
-  const { lang } = useLang();
-  const ar = lang === 'ar';
   const { pid = '', v = '' } = useParams();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('share') ?? '';
+  return <GuestReviewGate key={`${pid}:${v}:${token}`} pid={pid} version={v} token={token} />;
+}
+
+function GuestReviewGate({ pid, version, token }: { pid: string; version: string; token: string }) {
+  const { lang } = useLang();
+  const ar = lang === 'ar';
   const requireCode = import.meta.env.PROD || import.meta.env.VITE_REQUIRE_REVIEW_SHARE_CODE === 'true';
-  const grantKey = useMemo(() => sessionGrantKey(token, pid, v), [token, pid, v]);
   const [code, setCode] = useState('');
-  const [status, setStatus] = useState<GateStatus>(() => {
-    if (!requireCode) return 'granted';
-    try {
-      return token && sessionStorage.getItem(grantKey) === '1' ? 'granted' : 'locked';
-    } catch {
-      return 'locked';
-    }
-  });
+  const [status, setStatus] = useState<GateStatus>(requireCode ? 'locked' : 'granted');
 
   useEffect(() => {
-    if (!requireCode) setStatus('granted');
-  }, [requireCode]);
+    if (!requireCode || status !== 'granted') return;
+    let active = true;
+    const verify = async () => {
+      try {
+        const valid = await validateReviewShare(token, pid, version, code);
+        if (active && !valid) setStatus('denied');
+      } catch {
+        if (active) setStatus('error');
+      }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void verify(); };
+    const interval = window.setInterval(() => void verify(), 60_000);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [requireCode, status, token, pid, version, code]);
 
   if (status === 'granted') return <ReviewWorkspace mode="guest" experience="pro" />;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!token || !pid || !v || !/^\d{6}$/.test(code)) return;
+    if (!token || !pid || !version || !/^\d{6}$/.test(code)) return;
 
     setStatus('checking');
     try {
-      const valid = await validateReviewShare(token, pid, v, code);
+      const valid = await validateReviewShare(token, pid, version, code);
       if (!valid) {
         setStatus('denied');
         return;
-      }
-      try {
-        sessionStorage.setItem(grantKey, '1');
-      } catch {
-        // The grant can remain in memory when sessionStorage is unavailable.
       }
       setStatus('granted');
     } catch {

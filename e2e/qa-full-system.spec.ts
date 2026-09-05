@@ -56,10 +56,14 @@ test.describe('Authentication & Access Control', () => {
     await expect(page).toHaveURL(/\/app\/projects\/p-vodafone$/);
   });
 
-  test('public review routes work without authentication', async ({ page }) => {
+  test('public review routes use the appropriate guest access gate', async ({ page, baseURL }) => {
     await page.goto('/review/p-vodafone/V04');
-    const video = page.locator('video');
-    await expect(video).toBeVisible();
+    if (baseURL?.startsWith('https://')) {
+      await expect(page.getByRole('heading', { name: /Enter the invitation code|أدخل كود الدعوة/ })).toBeVisible();
+      await expect(page.locator('video')).toHaveCount(0);
+    } else {
+      await expect(page.locator('video')).toBeVisible();
+    }
   });
 
   test('invalid project IDs show 404 not another project', async ({ page }) => {
@@ -69,7 +73,8 @@ test.describe('Authentication & Access Control', () => {
   });
 
   test('invalid version shows 404', async ({ page }) => {
-    await page.goto('/review/p-vodafone/V99');
+    await authenticate(page, AM);
+    await page.goto('/studio/review/p-vodafone/V99');
     await expect(page.getByText(/Page not found|الصفحة غير موجودة/i)).toBeVisible();
   });
 });
@@ -263,7 +268,8 @@ test.describe('Video Review System', () => {
 
   test('mobile review has collapsible comments drawer', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/review/p-vodafone/V04');
+    await authenticate(page, CLIENT);
+    await page.goto('/studio/review/p-vodafone/V04');
 
     const video = page.locator('video');
     await expect(video).toBeVisible();
@@ -421,7 +427,8 @@ test.describe('Comments & Feedback', () => {
   });
 
   test('client can approve a version with a decision note', async ({ page }) => {
-    await page.goto('/review/p-vodafone/V04');
+    await authenticate(page, CLIENT);
+    await page.goto('/studio/review/p-vodafone/V04');
     await page.getByRole('button', { name: /Approve version|اعتماد النسخة/i }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByPlaceholder(/Decision note|ملاحظة القرار/i).fill('Approved by QA test.');
@@ -693,6 +700,7 @@ test.describe('Video Editor', () => {
 
     const video = page.locator('main video');
     await expect(video).toBeVisible();
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
 
     await video.evaluate((el) => {
       (el as HTMLVideoElement).currentTime = 10;

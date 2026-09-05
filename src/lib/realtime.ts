@@ -38,7 +38,9 @@ export function connectReviewRealtime(roomId: string, clientId: string, options:
   const seen = new Set<string>();
   const pending: string[] = [];
   const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`augmentoria-review-${roomId}`);
-  const cloudChannel = supabase?.channel(`review:${roomId}`, {
+  // An explicit local transport must not also publish development/test data to
+  // the hosted cloud room or race its independent state snapshots.
+  const cloudChannel = configuredUrl ? null : supabase?.channel(`review:${roomId}`, {
     config: {
       broadcast: { self: false },
       presence: { key: clientId },
@@ -46,6 +48,8 @@ export function connectReviewRealtime(roomId: string, clientId: string, options:
   });
   let socket: WebSocket | null = null;
   let latestState: Extract<ReviewRealtimeMessage, { type: 'state' }> | null = null;
+  let receivedCloudState = false;
+  let bootstrapTimer: number | null = null;
   let closed = false;
   let retry: number | null = null;
 
@@ -62,6 +66,10 @@ export function connectReviewRealtime(roomId: string, clientId: string, options:
 
   cloudChannel
     ?.on('broadcast', { event: 'message' }, ({ payload }) => {
+      if (payload?.type === 'state') {
+        receivedCloudState = true;
+        latestState = payload as Extract<ReviewRealtimeMessage, { type: 'state' }>;
+      }
       receive(payload as ReviewRealtimeMessage);
     })
     .on('broadcast', { event: 'sync-request' }, () => {
@@ -80,10 +88,16 @@ export function connectReviewRealtime(roomId: string, clientId: string, options:
   if (cloudChannel) {
     cloudChannel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
+        receivedCloudState = false;
         await cloudChannel.track({ clientId, onlineAt: new Date().toISOString() });
         await cloudChannel.send({ type: 'broadcast', event: 'sync-request', payload: { clientId } });
         options.onStatus(true, 'Connected through Supabase Realtime');
-        receive({ type: 'welcome', state: null, serverTime: Date.now() });
+        // Let an existing participant supply the current room before publishing
+        // a joining browser's seed state over it.
+        if (bootstrapTimer !== null) window.clearTimeout(bootstrapTimer);
+        bootstrapTimer = window.setTimeout(() => {
+          if (!closed && !receivedCloudState) receive({ type: 'welcome', state: null, serverTime: Date.now() });
+        }, 500);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         options.onStatus(false, `Supabase Realtime ${status.toLowerCase().replace('_', ' ')}`);
       }
@@ -121,7 +135,7 @@ export function connectReviewRealtime(roomId: string, clientId: string, options:
 
   return {
     send(message: Extract<ReviewRealtimeMessage, { type: 'state' | 'playback' }>) {
-      const envelope = { ...message, id: message.id ?? `${clientId}-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+      const envelope = { ...message, senderId: clientId, id: message.id ?? `${clientId}-${Date.now()}-${Math.random().toString(36).slice(2)}` };
       if (envelope.type === 'state') latestState = envelope;
       const payload = JSON.stringify(envelope);
       channel?.postMessage(envelope);
@@ -132,6 +146,7 @@ export function connectReviewRealtime(roomId: string, clientId: string, options:
     close() {
       closed = true;
       if (retry !== null) window.clearTimeout(retry);
+      if (bootstrapTimer !== null) window.clearTimeout(bootstrapTimer);
       socket?.close();
       channel?.close();
       if (cloudChannel) void supabase?.removeChannel(cloudChannel);

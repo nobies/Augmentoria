@@ -16,6 +16,7 @@ import { toast } from '../../lib/toast';
 import NotFoundPage from '../NotFoundPage';
 import { renderCommentThumbnail, saveCommentThumbnail } from '../../lib/commentThumbnail';
 import { connectReviewRealtime } from '../../lib/realtime';
+import { selectReviewRoomState } from '../../lib/reviewRoomState';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import ShareReviewDialog from './ShareReviewDialog';
 
@@ -233,8 +234,6 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
     () => state.sessions.find((session) => session.projectId === projectId && session.version === version && !session.endedAt),
     [projectId, state.sessions, version]
   );
-  const activeSessionId = activeSession?.id;
-  const activeSessionHostId = activeSession?.hostId;
   const pendingControlRequesterId = activeSession?.controlRequests?.[0];
   const pendingControlRequester = pendingControlRequesterId
     ? memberMap.get(pendingControlRequesterId)?.name ?? (pendingControlRequesterId.startsWith('guest-') ? 'Guest' : 'Reviewer')
@@ -324,13 +323,19 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
     const video = videoRef.current;
     if (!video || !projectId) return;
     const roomId = `${projectId}-${version}`;
-    const controlsPlayback = Boolean(activeSessionId && activeSessionHostId === actorId);
+    const scope = { projectId, version };
+    // Keep the transport alive during session/control changes. Reconnecting here
+    // can replay an older welcome snapshot over the just-accepted handoff.
+    const currentSession = () => getAppState().sessions.find(
+      (session) => session.projectId === projectId && session.version === version && !session.endedAt,
+    );
     let lastTimeSent = 0;
     let applyingRemote = false;
     let applyingRemoteState = false;
 
     const applyPlayback = (message: { action: string; time: number; sessionId: string }) => {
-      if (controlsPlayback || !activeSessionId || message.sessionId !== activeSessionId) return;
+      const session = currentSession();
+      if (!session || session.hostId === actorId || message.sessionId !== session.id) return;
       applyingRemote = true;
       if (Math.abs(video.currentTime - message.time) > 0.08) video.currentTime = message.time;
       if (message.action === 'play') void video.play().catch(() => undefined);
@@ -349,33 +354,35 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
         if (message.type === 'welcome') {
           if (message.state) {
             applyingRemoteState = true;
-            actions.replaceRealtimeState(message.state);
+            actions.replaceRealtimeState(message.state, scope);
             applyingRemoteState = false;
           } else {
-            connection.send({ type: 'state', state: getAppState() });
+            connection.send({ type: 'state', state: selectReviewRoomState(getAppState(), scope) });
           }
           if (message.playback) applyPlayback(message.playback);
         } else if (message.type === 'state' && message.senderId !== actorId) {
           applyingRemoteState = true;
-          actions.replaceRealtimeState(message.state);
+          actions.replaceRealtimeState(message.state, scope);
           applyingRemoteState = false;
         } else if (message.type === 'playback' && message.senderId !== actorId) {
           applyPlayback(message);
         } else if (message.type === 'presence') {
           setLiveParticipants(message.participants);
-          if (activeSessionId && activeSessionHostId === actorId) actions.addSessionParticipants(activeSessionId, message.participants, actorId);
+          const session = currentSession();
+          if (session?.hostId === actorId) actions.addSessionParticipants(session.id, message.participants, actorId);
         }
       },
     });
 
-    const unsubscribeState = subscribeToState(() => {
-      if (!applyingRemoteState) connection.send({ type: 'state', state: getAppState() });
+    const unsubscribeState = subscribeToState((source) => {
+      if (source === 'local' && !applyingRemoteState) connection.send({ type: 'state', state: selectReviewRoomState(getAppState(), scope) });
     });
 
     const send = (action: 'play' | 'pause' | 'seek' | 'time') => {
-      if (!controlsPlayback || applyingRemote || !activeSessionId) return;
-      if (action !== 'time') actions.addSessionEvent(activeSessionId, action, actorId, video.currentTime);
-      connection.send({ type: 'playback', action, time: video.currentTime, sessionId: activeSessionId });
+      const session = currentSession();
+      if (!session || session.hostId !== actorId || applyingRemote) return;
+      if (action !== 'time') actions.addSessionEvent(session.id, action, actorId, video.currentTime);
+      connection.send({ type: 'playback', action, time: video.currentTime, sessionId: session.id });
     };
     const onPlay = () => send('play');
     const onPause = () => send('pause');
@@ -387,12 +394,10 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
       send('time');
     };
 
-    if (controlsPlayback) {
-      video.addEventListener('play', onPlay);
-      video.addEventListener('pause', onPause);
-      video.addEventListener('seeked', onSeek);
-      video.addEventListener('timeupdate', onTime);
-    }
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('seeked', onSeek);
+    video.addEventListener('timeupdate', onTime);
 
     return () => {
       video.removeEventListener('play', onPlay);
@@ -402,7 +407,7 @@ export default function ReviewWorkspace({ mode = 'app', experience = 'standard' 
       unsubscribeState();
       connection.close();
     };
-  }, [activeSessionHostId, activeSessionId, actorId, projectId, version]);
+  }, [actorId, projectId, version]);
 
   const markers: Marker[] = comments.map((c) => ({
     id: c.id,

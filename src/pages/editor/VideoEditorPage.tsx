@@ -157,10 +157,15 @@ export default function VideoEditorPage() {
     video.playbackRate = selectedSpeed;
     video.volume = selectedVolume;
     video.muted = selectedMuted;
+  }, [selectedClipId, selectedMuted, selectedSpeed, selectedVolume, src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !selectedClipId) return;
     const seek = selectedStart;
     if (Number.isFinite(seek)) video.currentTime = seek;
     setPlayhead(seek || 0);
-  }, [selectedClipId, selectedMuted, selectedSpeed, selectedStart, selectedVolume, src]);
+  }, [selectedClipId, selectedStart, src]);
 
   if (!project || !projectInUserScope(state, user, project) || !project.versions.some((row) => row.v === version)) return <NotFoundPage />;
 

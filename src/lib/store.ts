@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import type { Perm, RoleId } from './rbac';
 import { ALL_PERMS, ROLE_PERMS } from './rbac';
+import { mergeReviewRoomState } from './reviewRoomState';
+import type { ReviewRoomScope } from './reviewRoomState';
 
 export type ProjectStatus = 'editing' | 'review' | 'changes' | 'approved';
 
@@ -815,7 +817,8 @@ function load(): AppState | null {
 }
 
 let state: AppState = load() ?? migrate(seed());
-const listeners = new Set<() => void>();
+type StateChangeSource = 'local' | 'storage' | 'realtime';
+const listeners = new Set<(source: StateChangeSource) => void>();
 
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
@@ -824,14 +827,14 @@ if (typeof window !== 'undefined') {
       const incoming = JSON.parse(event.newValue) as AppState;
       if (!incoming.companies || !incoming.members || !incoming.projects) return;
       state = migrate(incoming);
-      listeners.forEach((listener) => listener());
+      listeners.forEach((listener) => listener('storage'));
     } catch {
       // Ignore malformed or incompatible cross-tab state.
     }
   });
 }
 
-function emit() {
+function emit(source: StateChangeSource = 'local') {
   try {
     // Frame captures belong in IndexedDB. Keeping them in the synchronous
     // localStorage state makes one busy review enough to exceed the browser
@@ -845,10 +848,10 @@ function emit() {
     // A large imported thumbnail or a full browser quota must not make a user action fail.
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('augmentoria:persistence-error'));
   }
-  listeners.forEach((l) => l());
+  listeners.forEach((l) => l(source));
 }
 
-function subscribe(l: () => void) {
+function subscribe(l: (source: StateChangeSource) => void) {
   listeners.add(l);
   return () => {
     listeners.delete(l);
@@ -901,10 +904,12 @@ function pushAudit(
 const TRASH_CAP = 50;
 
 export const actions = {
-  replaceRealtimeState(incoming: AppState) {
+  replaceRealtimeState(incoming: AppState, scope?: ReviewRoomScope) {
     if (!incoming || !Array.isArray(incoming.projects) || !Array.isArray(incoming.comments) || !Array.isArray(incoming.layers)) return;
-    state = migrate(JSON.parse(JSON.stringify(incoming)) as AppState);
-    emit();
+    const next = scope ? mergeReviewRoomState(state, incoming, scope) : incoming;
+    if (next === state) return;
+    state = migrate(JSON.parse(JSON.stringify(next)) as AppState);
+    emit('realtime');
   },
 
   addCompany(name: string, opts?: Partial<Pick<Company, 'plan' | 'planStartedAt' | 'planRenewsAt' | 'maxMembers' | 'notes' | 'tagline'>>, actorId?: string) {

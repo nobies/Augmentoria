@@ -6,7 +6,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    exclude: ['e2e/**', 'archive/**', 'services/**', 'node_modules/**', 'dist/**'],
+    exclude: ['e2e/**', 'e2e-online/**', 'archive/**', 'services/**', 'node_modules/**', 'dist/**'],
     environmentOptions: {
       jsdom: {
         url: 'http://localhost/'
